@@ -1,0 +1,47 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prueba de conexión con la API</title>
+</head>
+<body>
+  <h1>Prueba de conexión con la API</h1>
+  <button id="probar">Comprobar conexión</button>
+  <pre id="resultado">Pulsa el botón para comenzar.</pre>
+
+  
+<script type="module">
+  import {
+    API_BASE_URL,
+    comprobarConexionAPI
+  } from '/src/config/api.ts';
+
+  const resultado = document.getElementById('resultado');
+
+  document.getElementById('probar').addEventListener('click', async () => {
+    resultado.textContent = 'Conectando...';
+
+    try {
+      console.log('URL configurada:', API_BASE_URL);
+
+      const data = await comprobarConexionAPI();
+
+      resultado.textContent =
+        `Conexión correcta\n` +
+        `URL: ${API_BASE_URL}\n` +
+        JSON.stringify(data, null, 2);
+
+      console.log('Conexión mediante api.ts:', data);
+    } catch (error) {
+      resultado.textContent = `Error: ${error.message}`;
+      console.error('Error de conexión:', error);
+    }
+  });
+</script>
+</body>
+</html>
+
+</body>
+</html>
