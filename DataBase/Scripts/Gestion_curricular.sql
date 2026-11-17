@@ -18,7 +18,8 @@ USE Gestion_curricular;
 
 CREATE TABLE Sede (
     id_sede INT AUTO_INCREMENT PRIMARY KEY,
-    nombre_sede VARCHAR(200) NOT NULL
+    nombre_sede VARCHAR(200) NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo'
 ) ENGINE=InnoDB;
 
 CREATE TABLE Facultad (
@@ -26,6 +27,7 @@ CREATE TABLE Facultad (
     id_sede INT NOT NULL,
     nombre_facultad VARCHAR(200) NOT NULL,
     descripcion_facultad VARCHAR(200),
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_facultad_sede
         FOREIGN KEY (id_sede)
@@ -42,6 +44,7 @@ CREATE TABLE Carreras (
     id_carrera INT AUTO_INCREMENT PRIMARY KEY,
     id_facultad INT NOT NULL,
     nombre_carrera VARCHAR(200) NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_carreras_facultad
         FOREIGN KEY (id_facultad)
@@ -152,6 +155,7 @@ CREATE TABLE Usuarios_participantes_plan (
     id_usuario_participante_plan INT AUTO_INCREMENT PRIMARY KEY,
     id_plan INT NOT NULL,
     id_usuario INT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_participantes_plan_plan
         FOREIGN KEY (id_plan)
@@ -170,6 +174,7 @@ CREATE TABLE Actividades (
     fecha_fin DATETIME NOT NULL,
     responsable_implementacion MEDIUMTEXT NOT NULL,
     observacion MEDIUMTEXT,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_actividades_plan
         FOREIGN KEY (id_plan)
@@ -181,6 +186,7 @@ CREATE TABLE Orientaciones_metodologicas (
     id_plan INT NOT NULL,
     nombre MEDIUMTEXT,
     descripcion MEDIUMTEXT,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_orientaciones_plan
         FOREIGN KEY (id_plan)
@@ -192,6 +198,7 @@ CREATE TABLE Requisitos_permanencia_graduacion (
     id_plan INT NOT NULL,
     nombre MEDIUMTEXT,
     descripcion MEDIUMTEXT,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_requisitos_permanencia_plan
         FOREIGN KEY (id_plan)
@@ -203,6 +210,7 @@ CREATE TABLE Evaluacion_aprendizaje (
     id_plan INT NOT NULL,
     nombre MEDIUMTEXT,
     descripcion MEDIUMTEXT,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_evaluacion_aprendizaje_plan
         FOREIGN KEY (id_plan)
@@ -214,6 +222,7 @@ CREATE TABLE Items_justificacion (
     id_plan INT NOT NULL,
     nombre MEDIUMTEXT,
     descripcion MEDIUMTEXT,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_items_justificacion_plan
         FOREIGN KEY (id_plan)
@@ -226,6 +235,7 @@ CREATE TABLE Materiales_didacticos (
     nombre VARCHAR(150),
     descripcion MEDIUMTEXT,
     imagen MEDIUMTEXT,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_materiales_didacticos_plan
         FOREIGN KEY (id_plan)
@@ -237,6 +247,7 @@ CREATE TABLE Objetivos_carrera (
     id_plan INT NOT NULL,
     tipo_objetivo ENUM('general', 'especifico') NOT NULL,
     descripcion_objetivo MEDIUMTEXT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_objetivos_carrera_plan
         FOREIGN KEY (id_plan)
@@ -246,6 +257,7 @@ CREATE TABLE Objetivos_carrera (
 CREATE TABLE Perfiles_curriculares (
     id_perfil_curricular INT AUTO_INCREMENT PRIMARY KEY,
     id_plan INT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_perfiles_curriculares_plan
         FOREIGN KEY (id_plan)
@@ -257,6 +269,7 @@ CREATE TABLE Perfil_ingreso (
     id_perfil_curricular INT NOT NULL,
     nombre VARCHAR(150),
     descripcion MEDIUMTEXT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_perfil_ingreso_curricular
         FOREIGN KEY (id_perfil_curricular)
@@ -268,6 +281,7 @@ CREATE TABLE Perfil_egreso (
     id_perfil_curricular INT NOT NULL,
     nombre VARCHAR(150),
     descripcion MEDIUMTEXT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_perfil_egreso_curricular
         FOREIGN KEY (id_perfil_curricular)
@@ -279,6 +293,7 @@ CREATE TABLE Referencias_bibliograficas_plan (
     id_plan INT NOT NULL,
     referencia MEDIUMTEXT NOT NULL,
     fragmento_texto_asociado MEDIUMTEXT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_referencias_plan
         FOREIGN KEY (id_plan)
@@ -307,6 +322,7 @@ CREATE TABLE Asignaturas (
         'semipresencial',
         'nopresencial'
     ) NOT NULL,
+    estado_asignatura ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
     descripcion_asignatura MEDIUMTEXT,
     estrategia_metodologica MEDIUMTEXT,
     evaluacion MEDIUMTEXT,
@@ -317,6 +333,7 @@ CREATE TABLE Asignatura_carrera (
     id_asignatura_carrera INT AUTO_INCREMENT PRIMARY KEY,
     id_carrera INT NOT NULL,
     id_asignatura INT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_asignatura_carrera_carrera
         FOREIGN KEY (id_carrera)
@@ -331,6 +348,7 @@ CREATE TABLE Usuarios_participantes_asignatura (
     id_usuario_participante_asignatura INT AUTO_INCREMENT PRIMARY KEY,
     id_asignatura INT NOT NULL,
     id_usuario INT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_participantes_asignatura_asignatura
         FOREIGN KEY (id_asignatura)
@@ -346,6 +364,7 @@ CREATE TABLE Unidades_didacticas (
     id_asignatura INT NOT NULL,
     nombre VARCHAR(100) NOT NULL,
     objetivo VARCHAR(500) NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_unidades_didacticas_asignatura
         FOREIGN KEY (id_asignatura)
@@ -357,6 +376,7 @@ CREATE TABLE Contenidos (
     id_unidades_didacticas INT NOT NULL,
     nombre VARCHAR(100) NOT NULL,
     descripcion MEDIUMTEXT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_contenidos_unidad
         FOREIGN KEY (id_unidades_didacticas)
@@ -368,6 +388,7 @@ CREATE TABLE Objetivos_asignatura (
     id_asignatura INT NOT NULL,
     tipo_objetivo ENUM('general', 'especifico') NOT NULL,
     descripcion_objetivo MEDIUMTEXT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_objetivos_asignatura
         FOREIGN KEY (id_asignatura)
@@ -380,6 +401,7 @@ CREATE TABLE Tematica_ley (
     nombre MEDIUMTEXT,
     legislacion MEDIUMTEXT,
     otras_estrategias MEDIUMTEXT,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_tematica_ley_asignatura
         FOREIGN KEY (id_asignatura)
@@ -390,6 +412,7 @@ CREATE TABLE Referencias_bibliograficas_asignatura (
     id_referencia_bibliografica_asignatura INT AUTO_INCREMENT PRIMARY KEY,
     id_asignatura INT NOT NULL,
     referencia MEDIUMTEXT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_referencias_asignatura
         FOREIGN KEY (id_asignatura)
@@ -403,6 +426,7 @@ CREATE TABLE Referencias_bibliograficas_asignatura (
 CREATE TABLE Prerrequisitos_asignatura (
     id_prerrequisito_asignatura INT NOT NULL,
     id_asignatura INT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     PRIMARY KEY (
         id_prerrequisito_asignatura,
@@ -423,6 +447,7 @@ CREATE TABLE Plan_absorcion (
     id_asignatura INT NOT NULL,
     id_asignatura_equivalente INT NOT NULL,
     id_plan INT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_plan_absorcion_asignatura
         FOREIGN KEY (id_asignatura)
@@ -449,6 +474,7 @@ CREATE TABLE Matriz_cambios (
     plan_vigente MEDIUMTEXT,
     plan_actualizado MEDIUMTEXT,
     justificacion MEDIUMTEXT,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_matriz_cambios_plan
         FOREIGN KEY (id_plan)
@@ -464,6 +490,7 @@ CREATE TABLE Matriz_congruencia (
     id_plan INT NOT NULL,
     id_objetivo_carrera INT NOT NULL,
     competencia_diagnostico MEDIUMTEXT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_matriz_congruencia_plan
         FOREIGN KEY (id_plan)
@@ -478,6 +505,7 @@ CREATE TABLE Matriz_congruencia_asignatura (
     id_matriz_congruencia_asignatura INT AUTO_INCREMENT PRIMARY KEY,
     id_matriz_congruencia INT NOT NULL,
     id_asignatura INT NOT NULL,
+    estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
 
     CONSTRAINT fk_matriz_congruencia_asignatura_matriz
         FOREIGN KEY (id_matriz_congruencia)
@@ -491,5 +519,3 @@ CREATE TABLE Matriz_congruencia_asignatura (
 -- ============================================================
 -- FIN DEL SCRIPT
 -- ============================================================
-
-
