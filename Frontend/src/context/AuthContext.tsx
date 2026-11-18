@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
-import type { UserSession } from '../types/auth.types';
+import type { UserSession, UserRole } from '../types/auth.types';
 
 interface AuthContextType {
   user: UserSession | null;
@@ -26,18 +26,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Por favor, completa todos los campos.');
     }
 
-    const response = await fetch('http://localhost:5000/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
+    const emailLower = email.trim().toLowerCase();
+    
+    // MODO PRUEBAS / MOCK LOCAL con aserción de tipo para evitar conflictos con UserRole
+    if (
+      emailLower === 'super@unicaes.edu.sv' ||
+      emailLower === 'admin@unicaes.edu.sv' ||
+      emailLower === 'docente@unicaes.edu.sv'
+    ) {
+      let mockUser: UserSession = {
+        id: 'test-id-123',
+        nombre: 'Usuario Prueba',
+        email: emailLower,
+        rol: 'USUARIO_ESTANDAR' as UserRole,
+        facultadNombre: 'Ingeniería y Tecnología',
+      };
 
-    if (!response.ok) {
-      throw new Error('Credenciales incorrectas o error de conexión con el servidor.');
+      if (emailLower === 'super@unicaes.edu.sv') {
+        mockUser.nombre = 'Eyleen Salinas (Super Usuario)';
+        mockUser.rol = 'SUPER_USUARIO' as UserRole;
+      } else if (emailLower === 'admin@unicaes.edu.sv') {
+        mockUser.nombre = 'Carlos Ruiz (Administrador)';
+        mockUser.rol = 'ADMINISTRADOR' as UserRole;
+      } else {
+        mockUser.nombre = 'Lucía Méndez (Usuario Estándar)';
+        mockUser.rol = 'USUARIO_ESTANDAR' as UserRole;
+      }
+
+      setSession(mockUser);
+      return;
     }
 
-    const userData: UserSession = await response.json();
-    setSession(userData);
+    // Conexión al backend real si no es correo de prueba
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Credenciales incorrectas o error de conexión con el servidor.');
+      }
+
+      const userData: UserSession = await response.json();
+      setSession(userData);
+    } catch (err: any) {
+      throw new Error(err.message || 'Error al conectar con el servidor backend.');
+    }
   };
 
   const logout = () => {

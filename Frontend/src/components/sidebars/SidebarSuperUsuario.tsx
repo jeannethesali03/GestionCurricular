@@ -1,19 +1,31 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-const NAV_ITEMS = [
-  { label: 'Todos los Planes', to: '/planes' },
-  { label: 'Facultades y Catálogos', to: '/facultades' },
+const NAV_ITEMS_SUPER_ADMIN = [
+  { label: 'Planes', to: '/planes' },
+  { label: 'Catálogo de Asignaturas', to: '/asignaturas' },
+  { label: 'Asignaciones', to: '/administrador/asignaciones' },
   { label: 'Gestión de Usuarios', to: '/usuarios' },
-  { label: 'Bitácora y Auditoría', to: '/auditoria' },
+  { label: 'Registro de Cambios', to: '/registro-cambios' },
   { label: 'Mi Perfil', to: '/perfil' },
 ];
 
 export const SidebarSuperUsuario: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Ocultar el sidebar en vistas de edición detallada
+  const path = location.pathname;
+  const esVistaEdicionDetallada = 
+    (path.includes('/planes/') && path.split('/').length > 3) || 
+    (path.includes('/asignaturas/') && path.split('/').length > 3);
+
+  if (esVistaEdicionDetallada) {
+    return null;
+  }
 
   const handleLogout = () => {
     logout();
@@ -35,7 +47,7 @@ export const SidebarSuperUsuario: React.FC = () => {
         </div>
 
         <nav className="px-3 space-y-1.5">
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS_SUPER_ADMIN.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -53,9 +65,9 @@ export const SidebarSuperUsuario: React.FC = () => {
         </nav>
       </div>
 
-      <div className="px-4 pb-6 pt-4 space-y-5">
+      <div className="px-4 pb-6 pt-4 space-y-4">
         <div className="px-1">
-          <p className="text-xs font-bold text-white leading-snug">{user?.nombre}</p>
+          <p className="text-xs font-bold text-white leading-snug">{user?.nombre || 'Super Usuario'}</p>
           <p className="text-[11px] text-white/70">Sesión institucional</p>
         </div>
 

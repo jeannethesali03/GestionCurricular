@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, Save, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Save, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ModalAlertaSalida } from '../../components/modals/ModalAlertaSalida';
 
@@ -229,8 +229,8 @@ export const ReferenciasAsignatura: React.FC = () => {
           <div className="pt-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-xs text-gray-400">
               {guardadoExitoso ? (
-                <span className="inline-flex items-center gap-1.5 text-[#2D5A1E] font-bold bg-[#8CB83C]/20 px-3 py-1.5 rounded-lg transition-all animate-fadeIn">
-                  <CheckCircle2 className="w-4 h-4 text-[#4C8C23]" />
+                <span className="inline-flex items-center gap-1.5 text-[#2D5A1E] font-bold bg-[#8CB83C]/20 px-3 py-1.5 rounded-lg transition-all">
+                  <CheckCircle className="w-4 h-4 text-[#4C8C23]" />
                   ¡Referencias guardadas con éxito!
                 </span>
               ) : (
@@ -264,7 +264,7 @@ export const ReferenciasAsignatura: React.FC = () => {
         <p>Los cambios de esta asignatura se reflejarán en los programas vinculados a los planes de estudio correspondientes.</p>
       </div>
 
-      {/* Modal de Confirmación de Salida (Llamado correctamente) */}
+      {/* Modal de Confirmación de Salida */}
       <ModalAlertaSalida
         isOpen={modalSalidaAbierto}
         mensaje="¿Ya guardaste los cambios antes de salir?"
