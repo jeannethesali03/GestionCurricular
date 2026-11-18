@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { ModalDescargarReporteWord } from '../../components/modals/ModalDescargarReporteWord';
 
 export interface SeccionPlan {
   id: string;
@@ -16,8 +17,11 @@ export const DetallePlan: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  // Estado para controlar la apertura del modal de descarga
+  const [modalReporteAbierto, setModalReporteAbierto] = useState(false);
+
   // 17 secciones del plan de estudio sin íconos
-  const [secciones, setSecciones] = useState<SeccionPlan[]>([
+  const [secciones] = useState<SeccionPlan[]>([
     { id: '01', numero: 'SECCIÓN 01', titulo: 'Generalidades de la carrera', descripcion: '6 campos · Datos académicos', estado: 'Completa', ruta: 'generalidades-carrera' },
     { id: '02', numero: 'SECCIÓN 02', titulo: 'Fundamentación de la carrera', descripcion: 'Marco institucional y pedagógico', estado: 'Completa', ruta: 'fundamentacion' },
     { id: '03', numero: 'SECCIÓN 03', titulo: 'Justificación de la carrera', descripcion: 'Pertinencia social y profesional', estado: 'Completa', ruta: 'justificacion' },
@@ -34,8 +38,26 @@ export const DetallePlan: React.FC = () => {
     { id: '14', numero: 'SECCIÓN 14', titulo: 'Abordaje de temática de ley', descripcion: 'Legislación y transversalidad', estado: 'Completa', ruta: 'tematica-ley' },
     { id: '15', numero: 'SECCIÓN 15', titulo: 'Plan de absorción', descripcion: 'Políticas y equivalencias internas', estado: 'Completa', ruta: 'plan-absorcion' },
     { id: '16', numero: 'SECCIÓN 16', titulo: 'Programación de actividades', descripcion: '2 áreas · 5 actividades', estado: 'Completa', ruta: 'programacion-actividades' },
-    { id: '17', numero: 'SECCIÓN 17', titulo: 'Matriz de congruencia', descripcion: '3 objetivos · 6 asignaturas', estado: 'Pendiente', ruta: 'matriz-congruencia' },
+    { id: '17', numero: 'SECCIÓN 17', titulo: 'Matriz de congruencia', descripcion: '3 objetivos · 6 asignaturas', estado: 'Completa', ruta: 'matriz-congruencia' },
   ]);
+
+  // Bloqueo total anti-retorno a edición desde el detalle
+  useEffect(() => {
+    // Al entrar al detalle, empujamos un estado limpio
+    window.history.pushState(null, '', window.location.href);
+
+    const bloquearRetornoAEdicion = () => {
+      // Si intentan usar las flechas del navegador para regresar al formulario de edición cerrado
+      const enEdicionActiva = sessionStorage.getItem('en_modo_edicion_activo') === 'true';
+      if (enEdicionActiva) {
+        // Mantenemos al usuario firmemente en el detalle reenviándolo a la misma ruta
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+
+    window.addEventListener('popstate', bloquearRetornoAEdicion);
+    return () => window.removeEventListener('popstate', bloquearRetornoAEdicion);
+  }, []);
 
   if (!user) return null;
 
@@ -51,7 +73,7 @@ export const DetallePlan: React.FC = () => {
 
   const handleDescargarReporte = () => {
     if (!es100Porciento) return;
-    alert('Generando e iniciando descarga del reporte institucional en formato Word (.docx)...');
+    setModalReporteAbierto(true);
   };
 
   return (
@@ -86,7 +108,7 @@ export const DetallePlan: React.FC = () => {
           <div className="flex items-center gap-3">
             <span className="text-3xl font-extrabold text-[#050758]">{porcentaje}%</span>
             <span className="text-xs font-medium text-gray-500">
-              {completadas} de {totalSecciones} secciones completas · {totalSecciones - completadas} sección pendiente
+              {completadas} de {totalSecciones} secciones completas
             </span>
           </div>
         </div>
@@ -105,7 +127,7 @@ export const DetallePlan: React.FC = () => {
         </div>
       </div>
 
-      {/* Listado de Secciones del Plan de Estudio (Sin Íconos) */}
+      {/* Listado de Secciones del Plan de Estudio */}
       <div className="space-y-4">
         <div>
           <h3 className="text-lg font-bold text-gray-900">
@@ -157,14 +179,23 @@ export const DetallePlan: React.FC = () => {
         <div>
           <h3 className="text-base font-bold text-gray-900">Reporte institucional</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Completa las 17 secciones para habilitar el reporte institucional.
+            {es100Porciento 
+              ? 'El expediente está completo y listo para la exportación institucional.' 
+              : 'Completa las 17 secciones para habilitar el reporte institucional.'}
           </p>
         </div>
 
-        {!es100Porciento && (
+        {/* Alerta dinámica según el estado del 100% */}
+        {!es100Porciento ? (
           <div className="bg-[#050758] text-white rounded-xl px-4 py-3.5 flex items-center justify-between">
             <p className="text-xs font-medium">
               Falta sección 17: Matriz de congruencia. Asigna materias a los objetivos específicos 2 y 3 para habilitar la descarga.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-[#8CB83C]/20 border border-[#8CB83C]/60 text-[#2D5A1E] rounded-xl px-4 py-3.5 flex items-center justify-between">
+            <p className="text-xs font-bold">
+              ¡Todas las secciones están completas! El plan se encuentra listo para descargar.
             </p>
           </div>
         )}
@@ -172,7 +203,7 @@ export const DetallePlan: React.FC = () => {
         <div className="flex items-center justify-between pt-2">
           <p className="text-xs text-gray-400">
             {es100Porciento 
-              ? 'El expediente está completo y listo para exportación.' 
+              ? 'Haz clic en el botón para previsualizar y descargar el documento.' 
               : 'El botón de descarga se habilitará automáticamente al alcanzar el 100%.'}
           </p>
 
@@ -182,7 +213,7 @@ export const DetallePlan: React.FC = () => {
             onClick={handleDescargarReporte}
             className={`text-xs font-bold px-6 py-3 rounded-xl shadow-sm transition ${
               es100Porciento
-                ? 'bg-[#050758] hover:bg-[#090c7a] text-white cursor-pointer'
+                ? 'bg-[#050758] hover:bg-[#090c7a] text-white cursor-pointer shadow-md'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             }`}
           >
@@ -190,6 +221,14 @@ export const DetallePlan: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Instancia del Modal de Descarga de Reporte Word */}
+      <ModalDescargarReporteWord
+        isOpen={modalReporteAbierto}
+        onClose={() => setModalReporteAbierto(false)}
+        planNombre="Ingeniería en Sistemas"
+        planCodigo={planId || 'ISI-2027'}
+      />
     </div>
   );
 };

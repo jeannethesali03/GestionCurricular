@@ -1,13 +1,30 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FileText, AlignLeft, Target, Layers, Compass, CheckSquare, BookOpen, ArrowUpRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-
 
 export const DetalleAsignatura: React.FC = () => {
   const { asignaturaId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  // Bloqueo total anti-retorno a edición desde el detalle de asignatura
+  useEffect(() => {
+    // Al entrar al detalle, empujamos un estado limpio
+    window.history.pushState(null, '', window.location.href);
+
+    const bloquearRetornoAEdicion = () => {
+      // Si intentan usar las flechas del navegador para regresar al formulario de edición cerrado
+      const enEdicionActiva = sessionStorage.getItem('en_modo_edicion_activo') === 'true';
+      if (enEdicionActiva) {
+        // Mantenemos al usuario firmemente en el detalle reenviándolo a la misma ruta
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+
+    window.addEventListener('popstate', bloquearRetornoAEdicion);
+    return () => window.removeEventListener('popstate', bloquearRetornoAEdicion);
+  }, []);
 
   if (!user) return null;
 
@@ -19,7 +36,6 @@ export const DetalleAsignatura: React.FC = () => {
       estado: 'Completa',
       icono: FileText,
       ruta: 'generalidades',
-      
     },
     {
       id: '02',
@@ -35,7 +51,7 @@ export const DetalleAsignatura: React.FC = () => {
       descripcion: 'General y 3 objetivos específicos',
       estado: 'Completa',
       icono: Target,
-      ruta: 'objetivos', // <--- Ruta asignada para Objetivos
+      ruta: 'objetivos',
     },
     {
       id: '04',
@@ -71,25 +87,25 @@ export const DetalleAsignatura: React.FC = () => {
     },
   ];
 
-const handleCardClick = (ruta: string) => {
-  if (ruta === 'generalidades') {
-    navigate(`/asignaturas/${asignaturaId || 'PRG101'}/generalidades`);
-  } else if (ruta === 'descripcion') {
-    navigate(`/asignaturas/${asignaturaId || 'PRG101'}/descripcion`);
-  } else if (ruta === 'objetivos') {
-    navigate(`/asignaturas/${asignaturaId || 'PRG101'}/objetivos`);
-  } else if (ruta === 'unidades') {
-    navigate(`/asignaturas/${asignaturaId || 'PRG101'}/unidades`);
-  } else if (ruta === 'estrategia') {
-    navigate(`/asignaturas/${asignaturaId || 'PRG101'}/estrategia`);
-  } else if (ruta === 'evaluacion') {
-    navigate(`/asignaturas/${asignaturaId || 'PRG101'}/evaluacion`);
-  } else if (ruta === 'referencias') {
-    navigate(`/asignaturas/${asignaturaId || 'PRG101'}/referencias`);
-  } else {
-    alert(`Vista de ${ruta} en desarrollo`);
-  }
-};
+  const handleCardClick = (ruta: string) => {
+    if (ruta === 'generalidades') {
+      navigate(`/asignaturas/${asignaturaId || 'PRG101'}/generalidades`);
+    } else if (ruta === 'descripcion') {
+      navigate(`/asignaturas/${asignaturaId || 'PRG101'}/descripcion`);
+    } else if (ruta === 'objetivos') {
+      navigate(`/asignaturas/${asignaturaId || 'PRG101'}/objetivos`);
+    } else if (ruta === 'unidades') {
+      navigate(`/asignaturas/${asignaturaId || 'PRG101'}/unidades`);
+    } else if (ruta === 'estrategia') {
+      navigate(`/asignaturas/${asignaturaId || 'PRG101'}/estrategia`);
+    } else if (ruta === 'evaluacion') {
+      navigate(`/asignaturas/${asignaturaId || 'PRG101'}/evaluacion`);
+    } else if (ruta === 'referencias') {
+      navigate(`/asignaturas/${asignaturaId || 'PRG101'}/referencias`);
+    } else {
+      alert(`Vista de ${ruta} en desarrollo`);
+    }
+  };
 
   return (
     <div className="space-y-6">

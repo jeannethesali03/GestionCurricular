@@ -3,15 +3,19 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { MainLayout } from '../components/MainLayout';
-
+import { LayoutEdicionPlan } from '../components/layout/LayoutEdicionPlan';
 
 /* USUARIO */
-import { Perfil } from '../pages/Perfil';
+import { Perfil } from '../pages/usuarios/Perfil';
+import { GestionUsuario } from '../pages/usuarios/GestionUsuario';
+import { CrearUsuario } from '../pages/usuarios/CrearUsuario';
+import { EditarUsuario } from '../pages/usuarios/EditarUsuario';
+import { DesactivarUsuario } from '../pages/usuarios/DesactivarUsuario';
+import { DetalleUsuario } from '../pages/usuarios/DetalleUsuario';
 
 /* ASIGNATURA */
-
 import { AsignaturasUsuario } from '../pages/asignaturas/AsignaturasUsuario';
-import { CatalogoAsignaturasUsuario } from '../pages/asignaturas/CatalogoAsignaturasUsuario';
+import { CrearAsignatura } from '../pages/asignaturas/CrearAsignatura';
 import { DetalleAsignatura } from '../pages/asignaturas/DetalleAsignatura';
 import { ObjetivosAsignatura } from '../pages/asignaturas/ObjetivosAsignatura';
 import { GeneralidadesAsignatura } from '../pages/asignaturas/GeneralidadesAsignatura';
@@ -22,8 +26,8 @@ import { EvaluacionAsignatura } from '../pages/asignaturas/EvaluacionAsignatura'
 import { ReferenciasAsignatura } from '../pages/asignaturas/ReferenciasAsignatura';
 
 /* PLAN */
-
 import { Planes } from '../pages/planes/Planes';
+import { CrearPlanEstudio } from '../pages/planes/CrearPlanEstudio';
 import { DetallePlan } from '../pages/planes/DetallePlan';
 import { GeneralidadesPlan } from '../pages/planes/GeneralidadesPlan';
 import { FundamentacionPlan } from '../pages/planes/FundamentacionPlan';
@@ -43,6 +47,11 @@ import { CondicionesPermanencia } from '../pages/planes/CondicionesPermanencia';
 import { ProgramacionActividades } from '../pages/planes/ProgramacionActividades';
 import { MatrizCongruencia } from '../pages/planes/MatrizCongruencia';
 
+/* ASIGNACION */
+import { CrearAsignacion } from '../pages/asignacion/CrearAsignacion';
+
+/* AUDITORIA */
+import { RegistroCambios } from '../pages/auditoria/RegistroCambios';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
@@ -66,48 +75,62 @@ export const AppRouter: React.FC = () => {
             </ProtectedRoute>
           }
         >
-        /* USUARIO */
+          {/* USUARIO & PERFIL */}
           <Route path="/perfil" element={<Perfil />} />
+          <Route path="/usuarios" element={<GestionUsuario />} />
+          <Route path="/usuarios/nuevo" element={<CrearUsuario />} />
+          <Route path="/usuarios/editar/:id" element={<EditarUsuario />} />
+          <Route path="/usuarios/desactivar/:id" element={<DesactivarUsuario />} />
+          <Route path="/usuarios/detalle/:id" element={<DetalleUsuario />} />
 
-        /* ASIGNATURA */
+          {/* ASIGNATURAS */}
           <Route path="/asignaturas" element={<AsignaturasUsuario />} />
-          <Route path="/catalogo" element={<CatalogoAsignaturasUsuario />} />
+          <Route path="/asignaturas/nuevo" element={<CrearAsignatura />} />
           <Route path="/asignaturas/:asignaturaId" element={<DetalleAsignatura />} />
-          <Route path="/asignaturas/:asignaturaId/objetivos" element={<ObjetivosAsignatura />} />
-          <Route path="/asignaturas/:asignaturaId/generalidades" element={<GeneralidadesAsignatura />} />
-          <Route path="/asignaturas/:asignaturaId/descripcion" element={<DescripcionAsignatura />} />
-          <Route path="/asignaturas/:asignaturaId/unidades" element={<UnidadesDidacticas />} />
-          <Route path="/asignaturas/:asignaturaId/estrategia" element={<EstrategiaMetodologica />} />
-          <Route path="/asignaturas/:asignaturaId/evaluacion" element={<EvaluacionAsignatura />} />
-          <Route path="/asignaturas/:asignaturaId/referencias" element={<ReferenciasAsignatura />} />
+
+          {/* Subvistas de edición de asignaturas protegidas con el layout */}
+          <Route element={<LayoutEdicionPlan />}>
+            <Route path="/asignaturas/:asignaturaId/objetivos" element={<ObjetivosAsignatura />} />
+            <Route path="/asignaturas/:asignaturaId/generalidades" element={<GeneralidadesAsignatura />} />
+            <Route path="/asignaturas/:asignaturaId/descripcion" element={<DescripcionAsignatura />} />
+            <Route path="/asignaturas/:asignaturaId/unidades" element={<UnidadesDidacticas />} />
+            <Route path="/asignaturas/:asignaturaId/estrategia" element={<EstrategiaMetodologica />} />
+            <Route path="/asignaturas/:asignaturaId/evaluacion" element={<EvaluacionAsignatura />} />
+            <Route path="/asignaturas/:asignaturaId/referencias" element={<ReferenciasAsignatura />} />          
+          </Route>
+
+          {/* PLANES */}
+          <Route path="/planes" element={<Planes />} />
+          <Route path="/planes/nuevo" element={<CrearPlanEstudio />} />
           <Route path="/planes/:planId" element={<DetallePlan />} />
 
-        /* PLAN */
-          <Route path="/planes" element={<Planes />} />
-          <Route path="/planes/:planId/generalidades-carrera" element={<GeneralidadesPlan />} />
-          <Route path="/planes/:planId/fundamentacion" element={<FundamentacionPlan />} />
-          <Route path="/planes/:planId/justificacion" element={<JustificacionPlan />} />
-          <Route path="/planes/:planId/objetivos-carrera" element={<ObjetivosPlan />} />
-          <Route path="/planes/:planId/perfil-ingreso" element={<PerfilIngresoPlan />} />
-          <Route path="/planes/:planId/perfil-profesional" element={<PerfilProfesionalPlan />} />
-          <Route path="/planes/:planId/materiales" element={<MaterialesDidacticosPlan />} />
-          <Route path="/planes/:planId/estructura-curricular" element={<EstructuraCurricularPlan />} />
-          <Route path="/planes/:planId/plan-absorcion" element={<PlanAbsorcionPlan />} />
-          <Route path="/planes/:planId/programas-asignatura" element={<ProgramasAsignaturaPlan />} />
-          <Route path="/planes/:planId/practicas" element={<ServicioSocialPlan />} />
-          <Route path="/planes/:planId/evaluacion-aprendizajes" element={<EvaluacionAprendizajesPlan />} />
-          <Route path="/planes/:planId/tematica-ley" element={<TematicaLeyPlan />} />
-          <Route path="/planes/:planId/orientaciones" element={<OrientacionMetodologica />} />
-          <Route path="/planes/:planId/permanencia" element={<CondicionesPermanencia />} />
-          <Route path="/planes/:planId/programacion-actividades" element={<ProgramacionActividades />} />
-          <Route path="/planes/:planId/matriz-congruencia" element={<MatrizCongruencia />} />
-          
+          {/* Vistas de edición de planes protegidas con el layout */}
+          <Route element={<LayoutEdicionPlan />}>
+            <Route path="/planes/:planId/generalidades-carrera" element={<GeneralidadesPlan />} />
+            <Route path="/planes/:planId/fundamentacion" element={<FundamentacionPlan />} />
+            <Route path="/planes/:planId/justificacion" element={<JustificacionPlan />} />
+            <Route path="/planes/:planId/objetivos-carrera" element={<ObjetivosPlan />} />
+            <Route path="/planes/:planId/perfil-ingreso" element={<PerfilIngresoPlan />} />
+            <Route path="/planes/:planId/perfil-profesional" element={<PerfilProfesionalPlan />} />
+            <Route path="/planes/:planId/materiales" element={<MaterialesDidacticosPlan />} />
+            <Route path="/planes/:planId/estructura-curricular" element={<EstructuraCurricularPlan />} />
+            <Route path="/planes/:planId/plan-absorcion" element={<PlanAbsorcionPlan />} />
+            <Route path="/planes/:planId/programas-asignatura" element={<ProgramasAsignaturaPlan />} />
+            <Route path="/planes/:planId/practicas" element={<ServicioSocialPlan />} />
+            <Route path="/planes/:planId/evaluacion-aprendizajes" element={<EvaluacionAprendizajesPlan />} />
+            <Route path="/planes/:planId/tematica-ley" element={<TematicaLeyPlan />} />
+            <Route path="/planes/:planId/orientaciones" element={<OrientacionMetodologica />} />
+            <Route path="/planes/:planId/permanencia" element={<CondicionesPermanencia />} />
+            <Route path="/planes/:planId/programacion-actividades" element={<ProgramacionActividades />} />
+            <Route path="/planes/:planId/matriz-congruencia" element={<MatrizCongruencia />} />
+          </Route>
 
-          {/* Ruta provisional para expediente de plan */}
-          <Route
-            path="/planes/:planId"
-            element={<div className="p-4 text-sm text-gray-600">Vista de expediente del plan (próxima pantalla)</div>}
-          />
+          {/* ASIGNACIONES */}
+          <Route path="/administrador/asignaciones" element={<CrearAsignacion />} />
+
+          {/* AUDITORÍA / REGISTRO DE CAMBIOS */}
+          <Route path="/registro-cambios" element={<RegistroCambios />} />
+
         </Route>
 
         {/* Redirección por defecto */}

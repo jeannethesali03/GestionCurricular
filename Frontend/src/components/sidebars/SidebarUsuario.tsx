@@ -6,7 +6,6 @@ import { useAuth } from '../../context/AuthContext';
 const NAV_ITEMS = [
   { label: 'Mis Planes Asignados', to: '/planes' },
   { label: 'Mis Asignaturas', to: '/asignaturas' },
-  { label: 'Catálogo de Facultad (Lectura)', to: '/catalogo' },
   { label: 'Mi Perfil', to: '/perfil' },
 ];
 

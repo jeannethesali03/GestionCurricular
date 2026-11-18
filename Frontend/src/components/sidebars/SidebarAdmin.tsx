@@ -1,19 +1,30 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-const NAV_ITEMS = [
-  { label: 'Planes de Facultad', to: '/planes' },
-  { label: 'Asignaturas de Facultad', to: '/asignaturas' },
-  { label: 'Docentes y Asignaciones', to: '/usuarios' },
-  { label: 'Reportes Institucionales', to: '/reportes' },
+const NAV_ITEMS_ADMIN = [
+  { label: 'Planes', to: '/planes' },
+  { label: 'Asignaturas de facultad', to: '/asignaturas' },
+  { label: 'Asignaciones', to: '/administrador/asignaciones' },
+  { label: 'Usuarios facultad', to: '/usuarios' },
   { label: 'Mi Perfil', to: '/perfil' },
 ];
 
 export const SidebarAdmin: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Ocultar el sidebar en vistas de edición detallada si aplica igual que el de usuario
+  const path = location.pathname;
+  const esVistaEdicionDetallada = 
+    (path.includes('/planes/') && path.split('/').length > 3) || 
+    (path.includes('/asignaturas/') && path.split('/').length > 3);
+
+  if (esVistaEdicionDetallada) {
+    return null;
+  }
 
   const handleLogout = () => {
     logout();
@@ -35,7 +46,7 @@ export const SidebarAdmin: React.FC = () => {
         </div>
 
         <nav className="px-3 space-y-1.5">
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS_ADMIN.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -53,9 +64,9 @@ export const SidebarAdmin: React.FC = () => {
         </nav>
       </div>
 
-      <div className="px-4 pb-6 pt-4 space-y-5">
+      <div className="px-4 pb-6 pt-4 space-y-4">
         <div className="px-1">
-          <p className="text-xs font-bold text-white leading-snug">{user?.nombre}</p>
+          <p className="text-xs font-bold text-white leading-snug">{user?.nombre || 'Carlos Ruiz'}</p>
           <p className="text-[11px] text-white/70">Sesión institucional</p>
         </div>
 
