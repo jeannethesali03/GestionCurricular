@@ -22,6 +22,7 @@ public class GestionCurricularDbContext : DbContext
     public DbSet<RegistroCambio> RegistrosCambios => Set<RegistroCambio>();
     public DbSet<PlanEstudio> PlanesEstudio => Set<PlanEstudio>();
     public DbSet<UsuarioParticipantePlan> UsuariosParticipantesPlan => Set<UsuarioParticipantePlan>();
+    public DbSet<ActividadesArea> ActividadesAreas => Set<ActividadesArea>();
     public DbSet<Actividad> Actividades => Set<Actividad>();
     public DbSet<OrientacionMetodologica> OrientacionesMetodologicas => Set<OrientacionMetodologica>();
     public DbSet<RequisitoPermanenciaGraduacion> RequisitosPermanenciaGraduacion => Set<RequisitoPermanenciaGraduacion>();
@@ -41,7 +42,9 @@ public class GestionCurricularDbContext : DbContext
     public DbSet<ObjetivoAsignatura> ObjetivosAsignatura => Set<ObjetivoAsignatura>();
     public DbSet<TematicaLey> TematicasLey => Set<TematicaLey>();
     public DbSet<ReferenciaBibliograficaAsignatura> ReferenciasBibliograficasAsignatura => Set<ReferenciaBibliograficaAsignatura>();
+    public DbSet<FuenteElectronicaAsignatura> FuentesElectronicasAsignatura => Set<FuenteElectronicaAsignatura>();
     public DbSet<PrerrequisitoAsignatura> PrerrequisitosAsignatura => Set<PrerrequisitoAsignatura>();
+    public DbSet<PrerrequisitoNoAsignatura> PrerrequisitosNoAsignatura => Set<PrerrequisitoNoAsignatura>();
     public DbSet<PlanAbsorcion> PlanesAbsorcion => Set<PlanAbsorcion>();
     public DbSet<MatrizCambio> MatricesCambios => Set<MatrizCambio>();
     public DbSet<MatrizCongruencia> MatricesCongruencia => Set<MatrizCongruencia>();
@@ -121,40 +124,10 @@ public class GestionCurricularDbContext : DbContext
         var estadoRegistroConverter = new ValueConverter<EstadoRegistro, string>(
             value => EstadoRegistroToDatabase(value),
             value => EstadoRegistroFromDatabase(value));
-        var entidadesConEstadoRegistro = new[]
-        {
-            typeof(Sede),
-            typeof(Facultad),
-            typeof(Carrera),
-            typeof(AsignaturaCarrera),
-            typeof(UsuarioParticipanteAsignatura),
-            typeof(UnidadDidactica),
-            typeof(Contenido),
-            typeof(ObjetivoAsignatura),
-            typeof(TematicaLey),
-            typeof(ReferenciaBibliograficaAsignatura),
-            typeof(PrerrequisitoAsignatura),
-            typeof(UsuarioParticipantePlan),
-            typeof(Actividad),
-            typeof(OrientacionMetodologica),
-            typeof(RequisitoPermanenciaGraduacion),
-            typeof(EvaluacionAprendizaje),
-            typeof(ItemJustificacion),
-            typeof(MaterialDidactico),
-            typeof(ObjetivoCarrera),
-            typeof(PerfilCurricular),
-            typeof(PerfilIngreso),
-            typeof(PerfilEgreso),
-            typeof(ReferenciaBibliograficaPlan),
-            typeof(PlanAbsorcion),
-            typeof(MatrizCambio),
-            typeof(MatrizCongruencia),
-            typeof(MatrizCongruenciaAsignatura)
-        };
-        foreach (var tipoEntidad in entidadesConEstadoRegistro)
+        foreach (var tipoEntidad in new[] { typeof(Sede), typeof(Facultad), typeof(Carrera) })
         {
             modelBuilder.Entity(tipoEntidad)
-                .Property(nameof(UsuarioParticipantePlan.EstadoRegistro))
+                .Property(nameof(Sede.EstadoRegistro))
                 .HasConversion(estadoRegistroConverter)
                 .HasDefaultValueSql("'activo'");
         }
@@ -205,10 +178,15 @@ public class GestionCurricularDbContext : DbContext
             .WithMany(entity => entity.PlanesParticipados)
             .HasForeignKey(entity => entity.IdUsuario)
             .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<Actividad>()
+        modelBuilder.Entity<ActividadesArea>()
             .HasOne(entity => entity.PlanEstudio)
-            .WithMany(entity => entity.Actividades)
+            .WithMany(entity => entity.ActividadesAreas)
             .HasForeignKey(entity => entity.IdPlan)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Actividad>()
+            .HasOne(entity => entity.ActividadesArea)
+            .WithMany(entity => entity.Actividades)
+            .HasForeignKey(entity => entity.IdArea)
             .OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<OrientacionMetodologica>()
             .HasOne(entity => entity.PlanEstudio)
@@ -304,6 +282,16 @@ public class GestionCurricularDbContext : DbContext
         modelBuilder.Entity<ReferenciaBibliograficaAsignatura>()
             .HasOne(entity => entity.Asignatura)
             .WithMany(entity => entity.ReferenciasBibliograficas)
+            .HasForeignKey(entity => entity.IdAsignatura)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<FuenteElectronicaAsignatura>()
+            .HasOne(entity => entity.Asignatura)
+            .WithMany(entity => entity.FuentesElectronicas)
+            .HasForeignKey(entity => entity.IdAsignatura)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PrerrequisitoNoAsignatura>()
+            .HasOne(entity => entity.Asignatura)
+            .WithMany(entity => entity.PrerrequisitosNoAsignatura)
             .HasForeignKey(entity => entity.IdAsignatura)
             .OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PrerrequisitoAsignatura>()

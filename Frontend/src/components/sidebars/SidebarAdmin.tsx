@@ -6,7 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 const NAV_ITEMS_ADMIN = [
   { label: 'Planes', to: '/planes' },
   { label: 'Asignaturas de facultad', to: '/asignaturas' },
-  { label: 'Asignaciones', to: '/administrador/asignaciones' },
+  { label: 'Asignaciones', to: '/app/operations/assign' },
   { label: 'Usuarios facultad', to: '/usuarios' },
   { label: 'Mi Perfil', to: '/perfil' },
 ];

@@ -4,8 +4,8 @@ namespace GestionCurricular.Api.Contracts;
 
 public sealed class PlanEstudioRequest
 {
-    [Range(1, int.MaxValue)]
-    public int? IdCarrera { get; set; }
+    [Required, Range(1, int.MaxValue)]
+    public int IdCarrera { get; set; }
 
     [Required, RegularExpression("^(presencial|semipresencial|virtual)$")]
     public string Modalidad { get; set; } = null!;
@@ -40,7 +40,7 @@ public sealed class PlanEstudioRequest
 
 public sealed record PlanEstudioResponse(
     int IdPlan,
-    int? IdCarrera,
+    int IdCarrera,
     string? NombreCarrera,
     string Modalidad,
     string CicloInicio,

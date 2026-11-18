@@ -28,9 +28,6 @@ public class MatrizCambio
     [Column("justificacion", TypeName = "mediumtext")]
     public string? Justificacion { get; set; }
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public PlanEstudio PlanEstudio { get; set; } = null!;
     public Asignatura? Asignatura { get; set; }
 }
@@ -52,9 +49,6 @@ public class MatrizCongruencia
     [Column("competencia_diagnostico", TypeName = "mediumtext")]
     public string CompetenciaDiagnostico { get; set; } = null!;
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public PlanEstudio PlanEstudio { get; set; } = null!;
     public ObjetivoCarrera ObjetivoCarrera { get; set; } = null!;
     public ICollection<MatrizCongruenciaAsignatura> Asignaturas { get; set; } = [];
@@ -72,9 +66,6 @@ public class MatrizCongruenciaAsignatura
 
     [Column("id_asignatura")]
     public int IdAsignatura { get; set; }
-
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
 
     public MatrizCongruencia MatrizCongruencia { get; set; } = null!;
     public Asignatura Asignatura { get; set; } = null!;

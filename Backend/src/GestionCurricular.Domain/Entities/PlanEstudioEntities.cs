@@ -39,7 +39,7 @@ public class PlanEstudio
     public int IdPlan { get; set; }
 
     [Column("id_carrera")]
-    public int? IdCarrera { get; set; }
+    public int IdCarrera { get; set; }
 
     [Column("modalidad", TypeName = "enum('presencial','semipresencial','virtual')")]
     public ModalidadPlanEstudio Modalidad { get; set; }
@@ -103,9 +103,9 @@ public class PlanEstudio
     [Column("orientacion_metodologica", TypeName = "mediumtext")]
     public string? OrientacionMetodologicaTexto { get; set; }
 
-    public Carrera? Carrera { get; set; }
+    public Carrera Carrera { get; set; } = null!;
     public ICollection<UsuarioParticipantePlan> UsuariosParticipantes { get; set; } = [];
-    public ICollection<Actividad> Actividades { get; set; } = [];
+    public ICollection<ActividadesArea> ActividadesAreas { get; set; } = [];
     public ICollection<OrientacionMetodologica> OrientacionesMetodologicas { get; set; } = [];
     public ICollection<RequisitoPermanenciaGraduacion> RequisitosPermanenciaGraduacion { get; set; } = [];
     public ICollection<EvaluacionAprendizaje> EvaluacionesAprendizaje { get; set; } = [];
@@ -132,11 +132,25 @@ public class UsuarioParticipantePlan
     [Column("id_usuario")]
     public int IdUsuario { get; set; }
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public PlanEstudio PlanEstudio { get; set; } = null!;
     public Usuario Usuario { get; set; } = null!;
+}
+
+[Table("Actividades_areas")]
+public class ActividadesArea
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    [Column("id_area")]
+    public int IdArea { get; set; }
+
+    [Column("id_plan")]
+    public int IdPlan { get; set; }
+
+    [Column("nombre_area", TypeName = "mediumtext")]
+    public string? NombreArea { get; set; }
+
+    public PlanEstudio PlanEstudio { get; set; } = null!;
+    public ICollection<Actividad> Actividades { get; set; } = [];
 }
 
 [Table("Actividades")]
@@ -146,11 +160,15 @@ public class Actividad
     [Column("id_actividades")]
     public int IdActividad { get; set; }
 
-    [Column("id_plan")]
-    public int IdPlan { get; set; }
+    [Column("id_area")]
+    public int IdArea { get; set; }
 
     [Column("nombre_actividad", TypeName = "mediumtext")]
     public string? NombreActividad { get; set; }
+
+    [MaxLength(20)]
+    [Column("numero_actividad")]
+    public string? NumeroActividad { get; set; }
 
     [Column("fecha_inicio")]
     public DateTime FechaInicio { get; set; }
@@ -165,10 +183,7 @@ public class Actividad
     [Column("observacion", TypeName = "mediumtext")]
     public string? Observacion { get; set; }
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
-    public PlanEstudio PlanEstudio { get; set; } = null!;
+    public ActividadesArea ActividadesArea { get; set; } = null!;
 }
 
 [Table("Orientaciones_metodologicas")]
@@ -186,9 +201,6 @@ public class OrientacionMetodologica
 
     [Column("descripcion", TypeName = "mediumtext")]
     public string? Descripcion { get; set; }
-
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
 
     public PlanEstudio PlanEstudio { get; set; } = null!;
 }
@@ -209,9 +221,6 @@ public class RequisitoPermanenciaGraduacion
     [Column("descripcion", TypeName = "mediumtext")]
     public string? Descripcion { get; set; }
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public PlanEstudio PlanEstudio { get; set; } = null!;
 }
 
@@ -231,9 +240,6 @@ public class EvaluacionAprendizaje
     [Column("descripcion", TypeName = "mediumtext")]
     public string? Descripcion { get; set; }
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public PlanEstudio PlanEstudio { get; set; } = null!;
 }
 
@@ -252,9 +258,6 @@ public class ItemJustificacion
 
     [Column("descripcion", TypeName = "mediumtext")]
     public string? Descripcion { get; set; }
-
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
 
     public PlanEstudio PlanEstudio { get; set; } = null!;
 }
@@ -279,9 +282,6 @@ public class MaterialDidactico
     [Column("imagen", TypeName = "mediumtext")]
     public string? Imagen { get; set; }
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public PlanEstudio PlanEstudio { get; set; } = null!;
 }
 
@@ -302,9 +302,6 @@ public class ObjetivoCarrera
     [Column("descripcion_objetivo", TypeName = "mediumtext")]
     public string DescripcionObjetivo { get; set; } = null!;
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public PlanEstudio PlanEstudio { get; set; } = null!;
     public ICollection<MatrizCongruencia> MatricesCongruencia { get; set; } = [];
 }
@@ -318,9 +315,6 @@ public class PerfilCurricular
 
     [Column("id_plan")]
     public int IdPlan { get; set; }
-
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
 
     public PlanEstudio PlanEstudio { get; set; } = null!;
     public ICollection<PerfilIngreso> PerfilesIngreso { get; set; } = [];
@@ -345,9 +339,6 @@ public class PerfilIngreso
     [Column("descripcion", TypeName = "mediumtext")]
     public string Descripcion { get; set; } = null!;
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public PerfilCurricular PerfilCurricular { get; set; } = null!;
 }
 
@@ -369,9 +360,6 @@ public class PerfilEgreso
     [Column("descripcion", TypeName = "mediumtext")]
     public string Descripcion { get; set; } = null!;
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public PerfilCurricular PerfilCurricular { get; set; } = null!;
 }
 
@@ -392,9 +380,6 @@ public class ReferenciaBibliograficaPlan
     [Required]
     [Column("fragmento_texto_asociado", TypeName = "mediumtext")]
     public string FragmentoTextoAsociado { get; set; } = null!;
-
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
 
     public PlanEstudio PlanEstudio { get; set; } = null!;
 }
