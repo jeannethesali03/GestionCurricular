@@ -63,7 +63,7 @@ public class Asignatura
     [Column("modalidad", TypeName = "enum('presencial','semipresencial','nopresencial')")]
     public ModalidadAsignatura Modalidad { get; set; }
 
-    [Column("estado_asignatura", TypeName = "enum('activo','inactivo')")]
+    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
     public EstadoAsignatura EstadoAsignatura { get; set; }
 
     [Column("descripcion_asignatura", TypeName = "mediumtext")]
@@ -75,15 +75,14 @@ public class Asignatura
     [Column("evaluacion", TypeName = "mediumtext")]
     public string? Evaluacion { get; set; }
 
-    [Column("fuentes_electronicas", TypeName = "mediumtext")]
-    public string? FuentesElectronicas { get; set; }
-
     public ICollection<AsignaturaCarrera> Carreras { get; set; } = [];
     public ICollection<UsuarioParticipanteAsignatura> UsuariosParticipantes { get; set; } = [];
     public ICollection<UnidadDidactica> UnidadesDidacticas { get; set; } = [];
     public ICollection<ObjetivoAsignatura> Objetivos { get; set; } = [];
     public ICollection<TematicaLey> TematicasLey { get; set; } = [];
     public ICollection<ReferenciaBibliograficaAsignatura> ReferenciasBibliograficas { get; set; } = [];
+    public ICollection<FuenteElectronicaAsignatura> FuentesElectronicas { get; set; } = [];
+    public ICollection<PrerrequisitoNoAsignatura> PrerrequisitosNoAsignatura { get; set; } = [];
     public ICollection<PrerrequisitoAsignatura> ComoAsignatura { get; set; } = [];
     public ICollection<PrerrequisitoAsignatura> ComoPrerrequisito { get; set; } = [];
     public ICollection<PlanAbsorcion> PlanesAbsorcion { get; set; } = [];
@@ -105,9 +104,6 @@ public class AsignaturaCarrera
     [Column("id_asignatura")]
     public int IdAsignatura { get; set; }
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public Carrera Carrera { get; set; } = null!;
     public Asignatura Asignatura { get; set; } = null!;
 }
@@ -124,9 +120,6 @@ public class UsuarioParticipanteAsignatura
 
     [Column("id_usuario")]
     public int IdUsuario { get; set; }
-
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
 
     public Asignatura Asignatura { get; set; } = null!;
     public Usuario Usuario { get; set; } = null!;
@@ -150,9 +143,6 @@ public class UnidadDidactica
     [Column("objetivo")]
     public string Objetivo { get; set; } = null!;
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public Asignatura Asignatura { get; set; } = null!;
     public ICollection<Contenido> Contenidos { get; set; } = [];
 }
@@ -174,9 +164,6 @@ public class Contenido
     [Column("descripcion", TypeName = "mediumtext")]
     public string? Descripcion { get; set; }
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public UnidadDidactica UnidadDidactica { get; set; } = null!;
 }
 
@@ -196,9 +183,6 @@ public class ObjetivoAsignatura
     [Required]
     [Column("descripcion_objetivo", TypeName = "mediumtext")]
     public string DescripcionObjetivo { get; set; } = null!;
-
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
 
     public Asignatura Asignatura { get; set; } = null!;
 }
@@ -222,9 +206,6 @@ public class TematicaLey
     [Column("otras_estrategias", TypeName = "mediumtext")]
     public string? OtrasEstrategias { get; set; }
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public Asignatura? Asignatura { get; set; }
 }
 
@@ -242,8 +223,22 @@ public class ReferenciaBibliograficaAsignatura
     [Column("referencia", TypeName = "mediumtext")]
     public string Referencia { get; set; } = null!;
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
+    public Asignatura Asignatura { get; set; } = null!;
+}
+
+[Table("Fuentes_electronicas_asignatura")]
+public class FuenteElectronicaAsignatura
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    [Column("id_fuente_electronica_asignatura")]
+    public int IdFuenteElectronicaAsignatura { get; set; }
+
+    [Column("id_asignatura")]
+    public int IdAsignatura { get; set; }
+
+    [Required]
+    [Column("referencia", TypeName = "mediumtext")]
+    public string Referencia { get; set; } = null!;
 
     public Asignatura Asignatura { get; set; } = null!;
 }
@@ -257,11 +252,25 @@ public class PrerrequisitoAsignatura
     [Column("id_asignatura")]
     public int IdAsignatura { get; set; }
 
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
-
     public Asignatura Asignatura { get; set; } = null!;
     public Asignatura Prerrequisito { get; set; } = null!;
+}
+
+[Table("Prerrequisitos_no_asignatura")]
+public class PrerrequisitoNoAsignatura
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    [Column("id_prerrequisito_no_asignatura")]
+    public int IdPrerrequisitoNoAsignatura { get; set; }
+
+    [Column("id_asignatura")]
+    public int IdAsignatura { get; set; }
+
+    [Required, MaxLength(100)]
+    [Column("Nombre")]
+    public string Nombre { get; set; } = null!;
+
+    public Asignatura Asignatura { get; set; } = null!;
 }
 
 [Table("Plan_absorcion")]
@@ -279,9 +288,6 @@ public class PlanAbsorcion
 
     [Column("id_plan")]
     public int IdPlan { get; set; }
-
-    [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
-    public EstadoRegistro EstadoRegistro { get; set; }
 
     public Asignatura Asignatura { get; set; } = null!;
     public Asignatura AsignaturaEquivalente { get; set; } = null!;

@@ -6,10 +6,12 @@ import { useAuth } from '../../context/AuthContext';
 const NAV_ITEMS_SUPER_ADMIN = [
   { label: 'Planes', to: '/planes' },
   { label: 'Catálogo de Asignaturas', to: '/asignaturas' },
-  { label: 'Asignaciones', to: '/administrador/asignaciones' },
+  { label: 'Asignaciones', to: '/app/operations/assign' },
   { label: 'Gestión de Usuarios', to: '/usuarios' },
+  { label: 'Gestión de Universidad', to: '/app/university' },
   { label: 'Registro de Cambios', to: '/registro-cambios' },
   { label: 'Mi Perfil', to: '/perfil' },
+  
 ];
 
 export const SidebarSuperUsuario: React.FC = () => {

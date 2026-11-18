@@ -48,10 +48,18 @@ import { ProgramacionActividades } from '../pages/planes/ProgramacionActividades
 import { MatrizCongruencia } from '../pages/planes/MatrizCongruencia';
 
 /* ASIGNACION */
+import { ListadoAsignaciones } from '../pages/asignacion/ListadoAsignaciones';
 import { CrearAsignacion } from '../pages/asignacion/CrearAsignacion';
+import { EditarAsignacion } from '../pages/asignacion/EditarAsignacion';
 
 /* AUDITORIA */
 import { RegistroCambios } from '../pages/auditoria/RegistroCambios';
+
+/* GESTIÓN UNIVERSIDAD */
+import { GestionUniversidad } from '../pages/universidad/GestionUniversidad';
+import { GestionCarreras } from '../pages/universidad/GestionCarreras';
+import { GestionFacultades } from '../pages/universidad/GestionFacultades';
+import { GestionSedes } from '../pages/universidad/GestionSedes';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
@@ -126,10 +134,18 @@ export const AppRouter: React.FC = () => {
           </Route>
 
           {/* ASIGNACIONES */}
-          <Route path="/administrador/asignaciones" element={<CrearAsignacion />} />
+          <Route path="/app/operations/assign" element={<ListadoAsignaciones />} />
+          <Route path="/app/operations/assign/nuevo" element={<CrearAsignacion />} />
+          <Route path="/app/operations/assign/editar/:id" element={<EditarAsignacion />} />
 
           {/* AUDITORÍA / REGISTRO DE CAMBIOS */}
           <Route path="/registro-cambios" element={<RegistroCambios />} />
+
+          {/* GESTIÓN DE UNIVERSIDAD (Exclusivo Superusuario) */}
+          <Route path="/app/university" element={<GestionUniversidad />} />
+          <Route path="/app/university/carreras" element={<GestionCarreras />} />
+          <Route path="/app/university/facultades" element={<GestionFacultades />} />
+          <Route path="/app/university/sedes" element={<GestionSedes />} />
 
         </Route>
 

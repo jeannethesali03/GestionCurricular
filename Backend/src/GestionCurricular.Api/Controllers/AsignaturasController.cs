@@ -27,6 +27,8 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
             .Include(entity => entity.Objetivos)
             .Include(entity => entity.TematicasLey)
             .Include(entity => entity.ReferenciasBibliograficas)
+            .Include(entity => entity.FuentesElectronicas)
+            .Include(entity => entity.PrerrequisitosNoAsignatura)
             .Include(entity => entity.ComoAsignatura).ThenInclude(relacion => relacion.Prerrequisito)
             .Include(entity => entity.ComoPrerrequisito).ThenInclude(relacion => relacion.Asignatura)
             .Include(entity => entity.PlanesAbsorcion).ThenInclude(relacion => relacion.PlanEstudio)
@@ -44,107 +46,105 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         {
             asignatura = ConvertirRespuesta(asignatura),
             carreras = asignatura.Carreras
-                .Where(relacion => incluirInactivos || relacion.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(relacion => new
                 {
                     relacion.IdAsignaturaCarrera,
                     relacion.IdCarrera,
                     relacion.Carrera.NombreCarrera,
-                    estado = relacion.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                    estado = "activo"
                 }),
             participantes = asignatura.UsuariosParticipantes
-                .Where(relacion => incluirInactivos || relacion.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(relacion => new
                 {
                     relacion.IdUsuarioParticipanteAsignatura,
                     relacion.IdUsuario,
                     relacion.Usuario.NombreUsuario,
                     relacion.Usuario.NombreCompleto,
-                    estado = relacion.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                    estado = "activo"
                 }),
             unidadesDidacticas = asignatura.UnidadesDidacticas
-                .Where(unidad => incluirInactivos || unidad.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(unidad => new
                 {
                     unidad.IdUnidadDidactica,
                     unidad.Nombre,
                     unidad.Objetivo,
-                    estado = unidad.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo",
+                    estado = "activo",
                     contenidos = unidad.Contenidos
-                        .Where(contenido => incluirInactivos || contenido.EstadoRegistro == EstadoRegistro.Activo)
                         .Select(contenido => new
                         {
                             contenido.IdContenido,
                             contenido.Nombre,
                             contenido.Descripcion,
-                            estado = contenido.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                            estado = "activo"
                         })
                 }),
             objetivos = asignatura.Objetivos
-                .Where(item => incluirInactivos || item.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(item => new
                 {
                     item.IdObjetivoAsignatura,
                     tipo = item.TipoObjetivo == TipoObjetivo.General ? "general" : "especifico",
                     item.DescripcionObjetivo,
-                    estado = item.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                    estado = "activo"
                 }),
             tematicasLey = asignatura.TematicasLey
-                .Where(item => incluirInactivos || item.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(item => new
                 {
                     item.IdTematicaLey,
                     item.Nombre,
                     item.Legislacion,
                     item.OtrasEstrategias,
-                    estado = item.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                    estado = "activo"
                 }),
             referenciasBibliograficas = asignatura.ReferenciasBibliograficas
-                .Where(item => incluirInactivos || item.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(item => new
                 {
                     item.IdReferenciaBibliograficaAsignatura,
                     item.Referencia,
-                    estado = item.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                    estado = "activo"
+                }),
+            fuentesElectronicas = asignatura.FuentesElectronicas.Select(item => new
+            {
+                item.IdFuenteElectronicaAsignatura,
+                item.Referencia
+            }),
+            prerrequisitosNoAsignatura = asignatura.PrerrequisitosNoAsignatura.Select(item => new
+            {
+                item.IdPrerrequisitoNoAsignatura,
+                item.Nombre
                 }),
             asignaturasQueRequierenComoPrerrequisito = asignatura.ComoPrerrequisito
-                .Where(item => incluirInactivos || item.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(item => new
                 {
                     item.IdAsignatura,
                     item.Asignatura.NombreAsignatura,
-                    estado = item.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                    estado = "activo"
                 }),
             prerrequisitos = asignatura.ComoAsignatura
-                .Where(item => incluirInactivos || item.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(item => new
                 {
                     item.IdPrerrequisitoAsignatura,
                     item.Prerrequisito.NombreAsignatura,
-                    estado = item.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                    estado = "activo"
                 }),
             planesAbsorcion = asignatura.PlanesAbsorcion
-                .Where(item => incluirInactivos || item.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(item => new
                 {
                     item.IdPlanAbsorcion,
                     item.IdAsignaturaEquivalente,
                     item.PlanEstudio.CicloInicio,
                     item.PlanEstudio.CicloFin,
-                    estado = item.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                    estado = "activo"
                 }),
             planesAbsorcionComoEquivalente = asignatura.PlanesAbsorcionEquivalentes
-                .Where(item => incluirInactivos || item.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(item => new
                 {
                     item.IdPlanAbsorcion,
                     item.IdAsignatura,
                     item.PlanEstudio.CicloInicio,
                     item.PlanEstudio.CicloFin,
-                    estado = item.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                    estado = "activo"
                 }),
             matricesCambios = asignatura.MatricesCambios
-                .Where(item => incluirInactivos || item.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(item => new
                 {
                     item.IdMatrizCambios,
@@ -153,15 +153,14 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
                     item.PlanVigente,
                     item.PlanActualizado,
                     item.Justificacion,
-                    estado = item.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                    estado = "activo"
                 }),
             matricesCongruencia = asignatura.MatricesCongruencia
-                .Where(item => incluirInactivos || item.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(item => new
                 {
                     item.IdMatrizCongruenciaAsignatura,
                     item.IdMatrizCongruencia,
-                    estado = item.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                    estado = "activo"
                 })
         });
     }
@@ -180,6 +179,7 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         }
 
         var asignaturas = await query
+            .Include(asignatura => asignatura.FuentesElectronicas)
             .OrderBy(asignatura => asignatura.IdAsignatura)
             .ToListAsync(cancellationToken);
 
@@ -195,6 +195,7 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
     {
         var asignatura = await db.Asignaturas
             .AsNoTracking()
+            .Include(entity => entity.FuentesElectronicas)
             .FirstOrDefaultAsync(entity => entity.IdAsignatura == id, cancellationToken);
 
         return asignatura is null
@@ -231,6 +232,7 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
             EstadoAsignatura = EstadoAsignatura.Activo
         };
         AplicarCambios(asignatura, request);
+        ReemplazarFuentesElectronicas(asignatura, request.FuentesElectronicas);
 
         db.Asignaturas.Add(asignatura);
         await db.SaveChangesAsync(cancellationToken);
@@ -252,6 +254,7 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         CancellationToken cancellationToken)
     {
         var asignatura = await db.Asignaturas
+            .Include(entity => entity.FuentesElectronicas)
             .FirstOrDefaultAsync(entity => entity.IdAsignatura == id, cancellationToken);
         if (asignatura is null)
         {
@@ -283,6 +286,7 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         }
 
         AplicarCambios(asignatura, request);
+        ReemplazarFuentesElectronicas(asignatura, request.FuentesElectronicas);
         await db.SaveChangesAsync(cancellationToken);
 
         return Ok(ConvertirRespuesta(asignatura));
@@ -295,8 +299,6 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         int id,
         CancellationToken cancellationToken)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-
         var asignatura = await db.Asignaturas
             .FirstOrDefaultAsync(entity => entity.IdAsignatura == id, cancellationToken);
         if (asignatura is null)
@@ -305,56 +307,7 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         }
 
         asignatura.EstadoAsignatura = EstadoAsignatura.Inactivo;
-
-        var relacionesCarrera = await db.AsignaturasCarrera
-            .Where(entity => entity.IdAsignatura == id)
-            .ToListAsync(cancellationToken);
-        var participantes = await db.UsuariosParticipantesAsignatura
-            .Where(entity => entity.IdAsignatura == id)
-            .ToListAsync(cancellationToken);
-        var unidades = await db.UnidadesDidacticas
-            .Where(entity => entity.IdAsignatura == id)
-            .ToListAsync(cancellationToken);
-        var unidadIds = unidades.Select(entity => entity.IdUnidadDidactica).ToArray();
-        var contenidos = await db.Contenidos
-            .Where(entity => unidadIds.Contains(entity.IdUnidadDidactica))
-            .ToListAsync(cancellationToken);
-        var objetivos = await db.ObjetivosAsignatura
-            .Where(entity => entity.IdAsignatura == id)
-            .ToListAsync(cancellationToken);
-        var tematicas = await db.TematicasLey
-            .Where(entity => entity.IdAsignatura == id)
-            .ToListAsync(cancellationToken);
-        var referencias = await db.ReferenciasBibliograficasAsignatura
-            .Where(entity => entity.IdAsignatura == id)
-            .ToListAsync(cancellationToken);
-        var prerrequisitos = await db.PrerrequisitosAsignatura
-            .Where(entity => entity.IdAsignatura == id || entity.IdPrerrequisitoAsignatura == id)
-            .ToListAsync(cancellationToken);
-        var planesAbsorcion = await db.PlanesAbsorcion
-            .Where(entity => entity.IdAsignatura == id || entity.IdAsignaturaEquivalente == id)
-            .ToListAsync(cancellationToken);
-        var matricesCambios = await db.MatricesCambios
-            .Where(entity => entity.IdAsignatura == id)
-            .ToListAsync(cancellationToken);
-        var matricesCongruencia = await db.MatricesCongruenciaAsignatura
-            .Where(entity => entity.IdAsignatura == id)
-            .ToListAsync(cancellationToken);
-
-        MarcarInactivos(relacionesCarrera, entity => entity.EstadoRegistro, (entity, estado) => entity.EstadoRegistro = estado);
-        MarcarInactivos(participantes, entity => entity.EstadoRegistro, (entity, estado) => entity.EstadoRegistro = estado);
-        MarcarInactivos(unidades, entity => entity.EstadoRegistro, (entity, estado) => entity.EstadoRegistro = estado);
-        MarcarInactivos(contenidos, entity => entity.EstadoRegistro, (entity, estado) => entity.EstadoRegistro = estado);
-        MarcarInactivos(objetivos, entity => entity.EstadoRegistro, (entity, estado) => entity.EstadoRegistro = estado);
-        MarcarInactivos(tematicas, entity => entity.EstadoRegistro, (entity, estado) => entity.EstadoRegistro = estado);
-        MarcarInactivos(referencias, entity => entity.EstadoRegistro, (entity, estado) => entity.EstadoRegistro = estado);
-        MarcarInactivos(prerrequisitos, entity => entity.EstadoRegistro, (entity, estado) => entity.EstadoRegistro = estado);
-        MarcarInactivos(planesAbsorcion, entity => entity.EstadoRegistro, (entity, estado) => entity.EstadoRegistro = estado);
-        MarcarInactivos(matricesCambios, entity => entity.EstadoRegistro, (entity, estado) => entity.EstadoRegistro = estado);
-        MarcarInactivos(matricesCongruencia, entity => entity.EstadoRegistro, (entity, estado) => entity.EstadoRegistro = estado);
-
         await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
 
         return NoContent();
     }
@@ -433,7 +386,20 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         asignatura.DescripcionAsignatura = request.DescripcionAsignatura;
         asignatura.EstrategiaMetodologica = request.EstrategiaMetodologica;
         asignatura.Evaluacion = request.Evaluacion;
-        asignatura.FuentesElectronicas = request.FuentesElectronicas;
+    }
+
+    private static void ReemplazarFuentesElectronicas(
+        Asignatura asignatura,
+        string? fuenteElectronica)
+    {
+        asignatura.FuentesElectronicas.Clear();
+        if (!string.IsNullOrWhiteSpace(fuenteElectronica))
+        {
+            asignatura.FuentesElectronicas.Add(new FuenteElectronicaAsignatura
+            {
+                Referencia = fuenteElectronica.Trim()
+            });
+        }
     }
 
     private static AsignaturaResponse ConvertirRespuesta(Asignatura asignatura) =>
@@ -462,19 +428,5 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
             asignatura.DescripcionAsignatura,
             asignatura.EstrategiaMetodologica,
             asignatura.Evaluacion,
-            asignatura.FuentesElectronicas);
-
-    private static void MarcarInactivos<TEntity>(
-        IEnumerable<TEntity> entidades,
-        Func<TEntity, EstadoRegistro> obtenerEstado,
-        Action<TEntity, EstadoRegistro> establecerEstado)
-    {
-        foreach (var entidad in entidades)
-        {
-            if (obtenerEstado(entidad) == EstadoRegistro.Activo)
-            {
-                establecerEstado(entidad, EstadoRegistro.Inactivo);
-            }
-        }
-    }
+            asignatura.FuentesElectronicas.FirstOrDefault()?.Referencia);
 }

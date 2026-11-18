@@ -356,8 +356,7 @@ public sealed class CarrerasController(GestionCurricularDbContext db) : Controll
             db.AsignaturasCarrera.Add(new AsignaturaCarrera
             {
                 IdCarrera = carrera.IdCarrera,
-                IdAsignatura = idAsignatura,
-                EstadoRegistro = EstadoRegistro.Activo
+                IdAsignatura = idAsignatura
             });
         }
 
@@ -420,21 +419,21 @@ public sealed class CarrerasController(GestionCurricularDbContext db) : Controll
                 .Where(relacion => relacion.IdCarrera == id)
                 .ToListAsync(cancellationToken);
 
-            foreach (var relacion in relaciones)
-            {
-                relacion.EstadoRegistro = nuevosIds.Contains(relacion.IdAsignatura)
-                    ? EstadoRegistro.Activo
-                    : EstadoRegistro.Inactivo;
-            }
+            var relacionesRemovidas = relaciones
+                .Where(relacion => !nuevosIds.Contains(relacion.IdAsignatura))
+                .ToArray();
+            db.AsignaturasCarrera.RemoveRange(relacionesRemovidas);
 
-            var idsExistentes = relaciones.Select(relacion => relacion.IdAsignatura).ToHashSet();
+            var idsExistentes = relaciones
+                .Where(relacion => nuevosIds.Contains(relacion.IdAsignatura))
+                .Select(relacion => relacion.IdAsignatura)
+                .ToHashSet();
             foreach (var idAsignatura in nuevosIds.Where(idAsignatura => !idsExistentes.Contains(idAsignatura)))
             {
                 db.AsignaturasCarrera.Add(new AsignaturaCarrera
                 {
                     IdCarrera = id,
-                    IdAsignatura = idAsignatura,
-                    EstadoRegistro = EstadoRegistro.Activo
+                    IdAsignatura = idAsignatura
                 });
             }
         }
@@ -524,8 +523,7 @@ public sealed class CarrerasController(GestionCurricularDbContext db) : Controll
                     }))
                 .ToList(),
             carrera.AsignaturasCarrera
-                .Where(relacion => relacion.EstadoRegistro == EstadoRegistro.Activo
-                    && relacion.Asignatura.EstadoAsignatura == EstadoAsignatura.Activo)
+                .Where(relacion => relacion.Asignatura.EstadoAsignatura == EstadoAsignatura.Activo)
                 .OrderBy(relacion => relacion.Asignatura.IdAsignatura)
                 .Select(relacion => new AsignaturaCarreraResumenResponse(
                     relacion.Asignatura.IdAsignatura,

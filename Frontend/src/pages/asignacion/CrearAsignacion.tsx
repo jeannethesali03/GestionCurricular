@@ -565,7 +565,7 @@ export const CrearAsignacion: React.FC = () => {
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
             <button
               type="button"
-              onClick={() => navigate('/planes')}
+              onClick={() => navigate('/app/operations/assign')}
               className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-bold px-5 py-3 rounded-xl shadow-sm transition cursor-pointer"
             >
               Salir

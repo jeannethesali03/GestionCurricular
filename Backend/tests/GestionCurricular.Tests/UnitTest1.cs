@@ -16,7 +16,7 @@ public class UnitTest1
         using var context = new GestionCurricularDbContext(options);
         var model = context.Model;
 
-        Assert.Equal(33, model.GetEntityTypes().Count());
+        Assert.Equal(36, model.GetEntityTypes().Count());
 
         var prerequisite = model.FindEntityType(typeof(PrerrequisitoAsignatura));
         Assert.NotNull(prerequisite);
@@ -41,13 +41,10 @@ public class UnitTest1
             .GetForeignKeys()
             .Single(foreignKey => foreignKey.Properties
                 .Any(property => property.Name == nameof(PlanEstudio.IdCarrera)));
-        Assert.True(planCareerRelationship.IsRequired == false);
+        Assert.True(planCareerRelationship.IsRequired);
 
-        var dependentTypes = new[]
+        var stateFreeTypes = new[]
         {
-            typeof(Sede),
-            typeof(Facultad),
-            typeof(Carrera),
             typeof(AsignaturaCarrera),
             typeof(UsuarioParticipanteAsignatura),
             typeof(UnidadDidactica),
@@ -56,7 +53,9 @@ public class UnitTest1
             typeof(TematicaLey),
             typeof(ReferenciaBibliograficaAsignatura),
             typeof(PrerrequisitoAsignatura),
+            typeof(PrerrequisitoNoAsignatura),
             typeof(UsuarioParticipantePlan),
+            typeof(ActividadesArea),
             typeof(Actividad),
             typeof(OrientacionMetodologica),
             typeof(RequisitoPermanenciaGraduacion),
@@ -71,17 +70,26 @@ public class UnitTest1
             typeof(PlanAbsorcion),
             typeof(MatrizCambio),
             typeof(MatrizCongruencia),
-            typeof(MatrizCongruenciaAsignatura)
+            typeof(MatrizCongruenciaAsignatura),
+            typeof(FuenteElectronicaAsignatura)
         };
 
-        foreach (var dependentType in dependentTypes)
+        foreach (var entityType in stateFreeTypes)
         {
-            var stateProperty = model.FindEntityType(dependentType)!
-                .FindProperty(nameof(UsuarioParticipantePlan.EstadoRegistro))!;
-            Assert.Equal(
-                "inactivo",
-                stateProperty.GetTypeMapping().Converter!
-                    .ConvertToProvider(EstadoRegistro.Inactivo));
+            Assert.Null(model.FindEntityType(entityType)!
+                .FindProperty("EstadoRegistro"));
         }
+
+        Assert.Equal(
+            "estado_registro",
+            model.FindEntityType(typeof(Asignatura))!
+                .FindProperty(nameof(Asignatura.EstadoAsignatura))!
+                .GetColumnName());
+        Assert.Equal(
+            "Actividades_areas",
+            model.FindEntityType(typeof(ActividadesArea))!.GetTableName());
+        Assert.Equal(
+            "Fuentes_electronicas_asignatura",
+            model.FindEntityType(typeof(FuenteElectronicaAsignatura))!.GetTableName());
     }
 }

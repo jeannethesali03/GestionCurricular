@@ -64,23 +64,21 @@ public sealed class UsuariosController(
                     registro.FechaHora
                 }),
             planesParticipados = usuario.PlanesParticipados
-                .Where(relacion => incluirInactivos || relacion.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(relacion => new
                 {
                     relacion.IdUsuarioParticipantePlan,
                     relacion.IdPlan,
                     relacion.PlanEstudio.CicloInicio,
                     relacion.PlanEstudio.CicloFin,
-                    estado = relacion.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                        estado = "activo"
                 }),
             asignaturasParticipadas = usuario.AsignaturasParticipadas
-                .Where(relacion => incluirInactivos || relacion.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(relacion => new
                 {
                     relacion.IdUsuarioParticipanteAsignatura,
                     relacion.IdAsignatura,
                     relacion.Asignatura.NombreAsignatura,
-                    estado = relacion.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo"
+                        estado = "activo"
                 })
         });
     }
