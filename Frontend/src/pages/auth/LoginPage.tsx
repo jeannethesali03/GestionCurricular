@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, ShieldCheck, UserCheck, User } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import logoUnicaes from "../../assets/logoUNICAES.png";
 
@@ -22,39 +22,11 @@ export const LoginPage: React.FC = () => {
     try {
       await login(email, password);
       navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Credenciales incorrectas. Intenta nuevamente.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Credenciales incorrectas. Intenta nuevamente.');
     } finally {
       setLoading(false);
     }
-  };
-
-  // Función de acceso rápido para pruebas adaptada a los tipos del sistema
-  const handleAccesoRapido = (rolSeleccionado: 'SUPER_USUARIO' | 'ADMINISTRADOR' | 'USUARIO_ESTANDAR') => {
-    let mockUser: any = {
-      id: 'test-id-123',
-      nombre: '',
-      email: '',
-      rol: rolSeleccionado,
-      facultadNombre: 'Ingeniería y Tecnología',
-    };
-
-    if (rolSeleccionado === 'SUPER_USUARIO') {
-      mockUser.nombre = 'Eyleen Salinas (Super Usuario)';
-      mockUser.email = 'super@unicaes.edu.sv';
-    } else if (rolSeleccionado === 'ADMINISTRADOR') {
-      mockUser.nombre = 'Carlos Ruiz (Administrador)';
-      mockUser.email = 'admin@unicaes.edu.sv';
-    } else {
-      mockUser.nombre = 'Lucía Méndez (Usuario Estándar)';
-      mockUser.email = 'docente@unicaes.edu.sv';
-    }
-
-    // Guardamos la sesión simulada en el localStorage
-    localStorage.setItem('unicaes_curricular_user', JSON.stringify(mockUser));
-    
-    // Recargamos y redirigimos para que el contexto cargue el rol al instante
-    window.location.href = '/usuarios';
   };
 
   return (
@@ -176,41 +148,6 @@ export const LoginPage: React.FC = () => {
             </div>
           </form>
 
-          {/* Panel de botones rápidos para cambiar de rol y evaluar interfaces */}
-          <div className="mt-8 w-full pt-6 border-t border-gray-200 space-y-2.5">
-            <p className="text-xs font-bold text-gray-700 text-center uppercase tracking-wide">
-              ⚡ Acceso rápido para pruebas de roles:
-            </p>
-
-            <div className="grid grid-cols-1 gap-2">
-              <button
-                type="button"
-                onClick={() => handleAccesoRapido('SUPER_USUARIO')}
-                className="w-full flex items-center justify-center gap-2 bg-[#8B1124] hover:bg-[#720e1d] text-white text-xs font-bold py-2.5 px-4 rounded-xl transition shadow-sm cursor-pointer"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                Entrar como Super Usuario
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleAccesoRapido('ADMINISTRADOR')}
-                className="w-full flex items-center justify-center gap-2 bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold py-2.5 px-4 rounded-xl transition shadow-sm cursor-pointer"
-              >
-                <UserCheck className="w-4 h-4" />
-                Entrar como Administrador
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleAccesoRapido('USUARIO_ESTANDAR')}
-                className="w-full flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-800 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition shadow-sm cursor-pointer"
-              >
-                <User className="w-4 h-4" />
-                Entrar como Usuario Estándar
-              </button>
-            </div>
-          </div>
         </div>
       </main>
     </div>

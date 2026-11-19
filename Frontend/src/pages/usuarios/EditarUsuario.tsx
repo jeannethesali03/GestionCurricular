@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Info, CheckCircle2, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { usuariosApi, type CatalogosUsuario, type Usuario } from '../../services/usuariosApi';
 
 export const EditarUsuario: React.FC = () => {
   const { user } = useAuth();
@@ -34,69 +35,95 @@ export const EditarUsuario: React.FC = () => {
     );
   }
 
-  // Datos simulados iniciales del usuario a editar
-  const [nombres, setNombres] = useState('Lucía');
-  const [apellidos, setApellidos] = useState('Méndez');
-  const [correo, setCorreo] = useState('lucia.mendez@catolica.edu.sv');
-  const [telefono, setTelefono] = useState('2224-0182');
+  // Estados funcionales de la API
+  const [catalogos, setCatalogos] = useState<CatalogosUsuario | null>(null);
+  const [registro, setRegistro] = useState<Usuario | null>(null);
   
-  // Si es superusuario puede cambiar rol y facultad; admin lo mantiene fijo
-  const [rolAsignado, setRolAsignado] = useState<'Usuario Estándar' | 'Administrador' | 'Superusuario'>('Usuario Estándar');
-  const [facultadSeleccionada, setFacultadSeleccionada] = useState(
-    user.facultadNombre || 'Ingeniería y Tecnología'
-  );
-
+  const [nombreCompleto, setNombreCompleto] = useState('');
+  const [correo, setCorreo] = useState('');
+  const [gradoAcademico, setGradoAcademico] = useState('');
+  const [experiencia, setExperiencia] = useState(0);
+  const [idRol, setIdRol] = useState('');
+  const [idFacultad, setIdFacultad] = useState('');
   const [password, setPassword] = useState('');
-  const [mostrarPassword, setMostrarPassword] = useState(false);
-  const [estado, setEstado] = useState('Activo');
+  const [activo, setActivo] = useState(true);
 
+  // Estados de control visual y feedback
+  const [mostrarPassword, setMostrarPassword] = useState(false);
   const [errorValidacion, setErrorValidacion] = useState('');
+  const [guardando, setGuardando] = useState(false);
   const [exito, setExito] = useState(false);
 
-  const facultadesDisponibles = [
-    'Ingeniería y Tecnología',
-    'Ciencias Económicas',
-    'Jurisprudencia y Ciencias Sociales',
-    'Ciencias de la Salud',
-    'Humanidades',
-  ];
+  // Cargar datos del usuario y catálogos al montar el componente
+  useEffect(() => {
+    if (!id) return;
+    let vigente = true;
+    Promise.all([usuariosApi.obtener(id), usuariosApi.catalogos()])
+      .then(([usuario, opciones]) => {
+        if (!vigente) return;
+        setRegistro(usuario);
+        setCatalogos(opciones);
+        setIdRol(String(usuario.idRol));
+        setIdFacultad(usuario.idFacultad ? String(usuario.idFacultad) : '');
+        setNombreCompleto(usuario.nombreCompleto);
+        setCorreo(usuario.correo);
+        setGradoAcademico(usuario.gradoAcademico);
+        setExperiencia(usuario.experienciaEducacionSuperior);
+        setActivo(usuario.estadoCuenta === 'activo');
+      })
+      .catch((err: unknown) => {
+        if (vigente) setErrorValidacion(err instanceof Error ? err.message : 'No se pudo cargar el usuario.');
+      });
+    return () => { vigente = false; };
+  }, [id]);
 
-  // Formateador automático de teléfono salvadoreño (opcional)
-  const handleTelefonoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let valor = e.target.value.replace(/\D/g, '');
-    if (valor.length > 4) {
-      valor = valor.slice(0, 4) + '-' + valor.slice(4, 8);
-    }
-    setTelefono(valor);
-  };
+  // Filtrado de roles según permisos del usuario autenticado
+  const rolesDisponibles = catalogos?.roles.filter((rol) => {
+    const nombre = rol.nombreRol.toUpperCase();
+    return esSuperUsuario || nombre === 'USUARIO' || nombre === 'USUARIO_ESTANDAR';
+  }) ?? [];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Filtrado de facultades según permisos
+  const facultadesDisponibles = catalogos?.facultades.filter((facultad) =>
+    esSuperUsuario || facultad.idFacultad === user.facultadId
+  ) ?? [];
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!id || !registro) return;
     setErrorValidacion('');
+    setGuardando(true);
 
-    // Validación estricta de correo institucional (@catolica.edu.sv)
-    const correoInstitucionalRegex = /^[a-zA-Z0-9._%+-]+@catolica\.edu\.sv$/;
-    if (!correoInstitucionalRegex.test(correo.trim().toLowerCase())) {
-      setErrorValidacion('El correo debe pertenecer obligatoriamente al dominio institucional (@catolica.edu.sv).');
-      return;
-    }
-
-    // Validación de teléfono (opcional, pero si se llena debe ser formato ####-####)
-    if (telefono.trim() !== '') {
-      const telefonoRegex = /^\d{4}-\d{4}$/;
-      if (!telefonoRegex.test(telefono)) {
-        setErrorValidacion('El número de teléfono debe tener el formato salvadoreño válido: ####-#### (ej. 2224-0196).');
+    try {
+      // Validación de contraseña opcional
+      if (password.trim() !== '' && password.length < 8) {
+        setErrorValidacion('La nueva contraseña debe tener al menos 8 caracteres.');
+        setGuardando(false);
         return;
       }
-    }
 
-    // Validación de contraseña solo si deciden cambiarla
-    if (password.trim() !== '' && password.length < 6) {
-      setErrorValidacion('La nueva contraseña debe tener al menos 6 caracteres.');
-      return;
-    }
+      // Actualizar datos principales del usuario
+      await usuariosApi.actualizar(id, {
+        idRol: Number(idRol),
+        idFacultad: idFacultad ? Number(idFacultad) : null,
+        nombreCompleto: nombreCompleto.trim(),
+        gradoAcademico: gradoAcademico.trim(),
+        experienciaEducacionSuperior: experiencia,
+        correo: correo.trim(),
+        ...(password ? { password } : {}),
+      });
 
-    setExito(true);
+      // Actualizar estado de cuenta si cambió
+      if (activo !== (registro.estadoCuenta === 'activo')) {
+        await usuariosApi.cambiarEstado(id, activo);
+      }
+
+      setExito(true);
+    } catch (err) {
+      setErrorValidacion(err instanceof Error ? err.message : 'No se pudieron guardar los cambios.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
@@ -106,107 +133,95 @@ export const EditarUsuario: React.FC = () => {
         <p className="text-xs text-gray-500 mt-1">
           {esSuperUsuario
             ? `Superusuario · Edición global de credenciales y permisos (ID: ${id || '1'})`
-            : `Administrador de Facultad · Edición de usuario estándar (ID: ${id || '1'})`}
+            : `Administrador de Facultad · Edición de usuario (ID: ${id || '1'})`}
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200/80 p-8 space-y-6 shadow-sm">
         
-        {/* Nombres y Apellidos */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-700">Nombres *</label>
-            <input
-              type="text"
-              required
-              value={nombres}
-              onChange={e => setNombres(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 focus:outline-none focus:border-[#050758]"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-700">Apellidos *</label>
-            <input
-              type="text"
-              required
-              value={apellidos}
-              onChange={e => setApellidos(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 focus:outline-none focus:border-[#050758]"
-            />
-          </div>
+        {/* Nombre completo */}
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-gray-700">Nombre completo *</label>
+          <input
+            type="text"
+            required
+            maxLength={150}
+            value={nombreCompleto}
+            onChange={e => setNombreCompleto(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 focus:outline-none focus:border-[#050758]"
+          />
         </div>
 
-        {/* Correo institucional estricto @catolica.edu.sv */}
+        {/* Correo electrónico */}
         <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-700">Correo institucional *</label>
+          <label className="text-xs font-bold text-gray-700">Correo electrónico *</label>
           <input
             type="email"
             required
+            maxLength={100}
             value={correo}
             onChange={e => setCorreo(e.target.value)}
             className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 focus:outline-none focus:border-[#050758]"
           />
-          <span className="text-[10px] text-gray-400">Debe utilizar obligatoriamente el dominio @catolica.edu.sv.</span>
         </div>
 
-        {/* Teléfono opcional */}
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-700">Teléfono (Opcional)</label>
-          <input
-            type="text"
-            value={telefono}
-            onChange={handleTelefonoChange}
-            maxLength={9}
-            placeholder="2224-0182"
-            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 focus:outline-none focus:border-[#050758]"
-          />
-          <span className="text-[10px] text-gray-400">Formato opcional: ####-####.</span>
+        {/* Grado académico y Experiencia */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-700">Grado académico *</label>
+            <input
+              type="text"
+              required
+              maxLength={150}
+              value={gradoAcademico}
+              onChange={e => setGradoAcademico(e.target.value)}
+              placeholder="Ej. Licenciado, Ingeniero"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 focus:outline-none focus:border-[#050758]"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-700">Experiencia en educación superior (Años) *</label>
+            <input
+              type="number"
+              required
+              min={0}
+              step={1}
+              value={experiencia}
+              onChange={e => setExperiencia(Number(e.target.value))}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 focus:outline-none focus:border-[#050758]"
+            />
+          </div>
         </div>
 
         {/* ROL y FACULTAD */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-700">Rol de usuario *</label>
-            {esSuperUsuario ? (
-              <select
-                value={rolAsignado}
-                onChange={(e) => setRolAsignado(e.target.value as 'Usuario Estándar' | 'Administrador' | 'Superusuario')}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 font-medium bg-white focus:outline-none focus:border-[#050758] cursor-pointer"
-              >
-                <option value="Usuario Estándar">Usuario Estándar</option>
-                <option value="Administrador">Administrador</option>
-                <option value="Superusuario">Superusuario</option>
-              </select>
-            ) : (
-              <input
-                type="text"
-                disabled
-                value="Usuario Estándar"
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-500 cursor-not-allowed font-medium"
-              />
-            )}
+            <select
+              required
+              value={idRol}
+              onChange={(e) => setIdRol(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 font-medium bg-white focus:outline-none focus:border-[#050758] cursor-pointer"
+            >
+              {rolesDisponibles.map((rol) => (
+                <option key={rol.idRol} value={rol.idRol}>{rol.nombreRol}</option>
+              ))}
+            </select>
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-700">Facultad *</label>
-            {esSuperUsuario ? (
-              <select
-                value={facultadSeleccionada}
-                onChange={(e) => setFacultadSeleccionada(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 font-medium bg-white focus:outline-none focus:border-[#050758] cursor-pointer"
-              >
-                {facultadesDisponibles.map((fac) => (
-                  <option key={fac} value={fac}>{fac}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                disabled
-                value={user.facultadNombre || 'Ingeniería y Tecnología'}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-500 cursor-not-allowed font-medium"
-              />
-            )}
+            <label className="text-xs font-bold text-gray-700">Facultad</label>
+            <select
+              value={idFacultad}
+              onChange={(e) => setIdFacultad(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 font-medium bg-white focus:outline-none focus:border-[#050758] cursor-pointer"
+            >
+              <option value="">Sin facultad (Global)</option>
+              {facultadesDisponibles.map((facultad) => (
+                <option key={facultad.idFacultad} value={facultad.idFacultad}>{facultad.nombreFacultad}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -215,7 +230,7 @@ export const EditarUsuario: React.FC = () => {
           <div className="bg-[#050758]/5 border border-[#050758]/15 rounded-xl p-4 flex items-center gap-3">
             <Info className="w-4 h-4 text-[#050758] shrink-0" />
             <p className="text-xs text-[#050758] font-medium">
-              Rol asignado: Usuario Estándar. El alcance se limita a la facultad de {user.facultadNombre || 'Ingeniería y Tecnología'}.
+              Tu administración está limitada a cuentas de tu facultad.
             </p>
           </div>
         )}
@@ -227,6 +242,8 @@ export const EditarUsuario: React.FC = () => {
             <div className="relative flex items-center">
               <input
                 type={mostrarPassword ? 'text' : 'password'}
+                minLength={8}
+                maxLength={128}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="Dejar en blanco para mantener"
@@ -245,14 +262,17 @@ export const EditarUsuario: React.FC = () => {
 
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-700">Estado de la cuenta</label>
-            <select
-              value={estado}
-              onChange={e => setEstado(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 bg-white focus:outline-none cursor-pointer"
-            >
-              <option value="Activo">Activo</option>
-              <option value="Inactivo">Inactivo</option>
-            </select>
+            <div className="flex items-center h-[42px] px-4 border border-gray-200 rounded-xl bg-gray-50/50">
+              <label className="flex items-center gap-2 text-xs font-medium text-gray-700 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={activo} 
+                  onChange={(e) => setActivo(e.target.checked)} 
+                  className="rounded text-[#050758] focus:ring-[#050758]"
+                />
+                Cuenta activa
+              </label>
+            </div>
           </div>
         </div>
 
@@ -270,7 +290,7 @@ export const EditarUsuario: React.FC = () => {
         {exito && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <p className="text-xs font-bold">¡Cambios guardados con éxito en el perfil del usuario!</p>
+            <p className="text-xs font-bold">¡Cambios guardados correctamente en el perfil del usuario!</p>
           </div>
         )}
 
@@ -279,15 +299,16 @@ export const EditarUsuario: React.FC = () => {
           <button
             type="button"
             onClick={() => navigate('/usuarios')}
-            className="border border-red-300 text-red-600 hover:bg-red-50 text-xs font-bold px-5 py-3 rounded-xl transition cursor-pointer"
+            className="border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-bold px-5 py-3 rounded-xl transition cursor-pointer shadow-sm"
           >
-            {exito ? 'Salir' : 'Cancelar'}
+            Cancelar
           </button>
           <button
+            disabled={guardando || !registro}
             type="submit"
-            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
+            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm disabled:opacity-50"
           >
-            Guardar cambios
+            {guardando ? 'Guardando...' : 'Guardar cambios'}
           </button>
         </div>
       </form>

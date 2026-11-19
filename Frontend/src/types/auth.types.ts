@@ -5,8 +5,10 @@ export interface UserSession {
   nombre: string;
   email: string;
   rol: UserRole;
-  facultadId?: string;
+  facultadId?: number;
   facultadNombre?: string;
+  gradoAcademico?: string;
+  experienciaEducacionSuperior?: number;
   planesAsignadosIds?: string[];      // Planes con acceso de lectura/edición para rol USUARIO
   asignaturasAsignadasIds?: string[]; // Asignaturas con acceso de edición para rol USUARIO
 }

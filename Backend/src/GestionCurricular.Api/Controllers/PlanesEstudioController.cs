@@ -55,7 +55,7 @@ public sealed class PlanesEstudioController(GestionCurricularDbContext db) : Con
                 {
                     relacion.IdUsuarioParticipantePlan,
                     relacion.IdUsuario,
-                    relacion.Usuario.NombreUsuario,
+                    relacion.Usuario.Correo,
                     relacion.Usuario.NombreCompleto,
                     estado = "activo"
                 }),

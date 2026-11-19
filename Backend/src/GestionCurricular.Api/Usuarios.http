@@ -1,0 +1,75 @@
+@baseUrl = http://localhost:5019
+@id = 1
+
+### Consultar roles y facultades
+GET {{baseUrl}}/api/usuarios/catalogos
+
+### Listar usuarios activos e inactivos
+GET {{baseUrl}}/api/usuarios?incluirInactivos=true
+
+### Consultar un usuario
+GET {{baseUrl}}/api/usuarios/{{id}}
+
+### Consultar el detalle y las asignaciones de un usuario
+GET {{baseUrl}}/api/usuarios/{{id}}/detalles
+
+### Crear usuario (cambiar los ID de rol y facultad por valores de catalogos)
+POST {{baseUrl}}/api/usuarios
+Content-Type: application/json
+
+{
+  "idRol": 1,
+  "idFacultad": null,
+  "nombreCompleto": "Usuario de Prueba",
+  "gradoAcademico": "Licenciatura",
+  "experienciaEducacionSuperior": 0,
+  "correo": "usuario.prueba@example.edu",
+  "password": "Cambiar123!"
+}
+
+### Actualizar perfil administrativo
+PUT {{baseUrl}}/api/usuarios/{{id}}
+Content-Type: application/json
+
+{
+  "idRol": 1,
+  "idFacultad": null,
+  "nombreCompleto": "Usuario Actualizado",
+  "gradoAcademico": "Maestría",
+  "experienciaEducacionSuperior": 2,
+  "correo": "usuario.prueba@example.edu"
+}
+
+### Actualizar datos propios del perfil
+PUT {{baseUrl}}/api/usuarios/{{id}}/perfil
+Content-Type: application/json
+
+{
+  "nombreCompleto": "Usuario Actualizado",
+  "gradoAcademico": "Maestría",
+  "experienciaEducacionSuperior": 2
+}
+
+### Cambiar contraseña (usar la contraseña actual de la cuenta)
+PUT {{baseUrl}}/api/usuarios/{{id}}/contrasena
+Content-Type: application/json
+
+{
+  "contrasenaActual": "Cambiar123!",
+  "nuevaContrasena": "NuevaClave123!"
+}
+
+### Iniciar sesión
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "correo": "usuario.prueba@example.edu",
+  "password": "NuevaClave123!"
+}
+
+### Desactivar usuario
+DELETE {{baseUrl}}/api/usuarios/{{id}}
+
+### Reactivar usuario
+PUT {{baseUrl}}/api/usuarios/{{id}}/activar

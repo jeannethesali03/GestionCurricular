@@ -82,7 +82,6 @@ public sealed record AsignaturaCarreraResumenResponse(
 
 public sealed record UsuarioFacultadResponse(
     int IdUsuario,
-    string Usuario,
     string NombreCompleto,
     string Correo,
     string EstadoCuenta);

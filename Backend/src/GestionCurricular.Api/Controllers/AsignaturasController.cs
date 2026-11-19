@@ -58,7 +58,7 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
                 {
                     relacion.IdUsuarioParticipanteAsignatura,
                     relacion.IdUsuario,
-                    relacion.Usuario.NombreUsuario,
+                    relacion.Usuario.Correo,
                     relacion.Usuario.NombreCompleto,
                     estado = "activo"
                 }),

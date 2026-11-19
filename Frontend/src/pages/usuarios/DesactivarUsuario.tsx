@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Lock, Trash2, CheckCircle2 } from 'lucide-react';
+import { Lock, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { usuariosApi, type Usuario } from '../../services/usuariosApi';
 
 export const DesactivarUsuario: React.FC = () => {
   const { user } = useAuth();
@@ -34,10 +35,38 @@ export const DesactivarUsuario: React.FC = () => {
     );
   }
 
+  // Estados funcionales de la API
+  const [registro, setRegistro] = useState<Usuario | null>(null);
+  const [error, setError] = useState('');
   const [desactivado, setDesactivado] = useState(false);
+  const [guardando, setGuardando] = useState(false);
 
-  const handleDesactivar = () => {
-    setDesactivado(true);
+  // Cargar datos reales del usuario al montar el componente
+  useEffect(() => {
+    if (!id) return;
+    let vigente = true;
+    usuariosApi.obtener(id)
+      .then((resultado) => { 
+        if (vigente) setRegistro(resultado); 
+      })
+      .catch((err: unknown) => { 
+        if (vigente) setError(err instanceof Error ? err.message : 'No se pudo cargar el usuario.'); 
+      });
+    return () => { vigente = false; };
+  }, [id]);
+
+  const handleDesactivar = async () => {
+    if (!id) return;
+    setError('');
+    setGuardando(true);
+    try {
+      await usuariosApi.cambiarEstado(id, false);
+      setDesactivado(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo desactivar el usuario.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
@@ -47,40 +76,60 @@ export const DesactivarUsuario: React.FC = () => {
         <p className="text-xs text-gray-500 mt-1">
           {esSuperUsuario
             ? `Superusuario · Desactivación de cuenta en el sistema (ID: ${id || '1'})`
-            : `Administrador de Facultad · Desactivación de usuario estándar (ID: ${id || '1'})`}
+            : `Administrador de Facultad · Desactivación de usuario (ID: ${id || '1'})`}
         </p>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-200/80 p-8 space-y-6 shadow-sm">
+        
+        {/* Alerta de seguridad */}
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 flex items-center gap-3">
           <Lock className="w-5 h-5 shrink-0 text-red-600" />
-          <p className="text-xs font-bold">Esta acción desactivará el acceso del usuario al sistema y lo moverá al final del listado.</p>
+          <p className="text-xs font-bold">Esta acción desactivará el acceso del usuario al sistema y se conservarán sus datos y su historial.</p>
         </div>
 
-        <div className="border border-gray-200 rounded-xl p-5 space-y-2">
-          <h4 className="font-bold text-gray-900">Lucía Méndez</h4>
-          <p className="text-xs text-gray-500">lucia.mendez@catolica.edu.sv · Usuario Estándar</p>
-          <p className="text-xs text-gray-600 font-medium pt-1">
-            {user.facultadNombre ? `Facultad de ${user.facultadNombre}` : 'Facultad de Ingeniería y Tecnología'}
-          </p>
-        </div>
-
-        <p className="text-xs text-gray-500 leading-relaxed">
-          Se retirarán sus 2 planes y 2 asignaturas asignadas. La información académica y el historial de autoría se conservarán.
-        </p>
-
-        {desactivado && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <p className="text-xs font-bold">¡Usuario desactivado correctamente!</p>
+        {/* Error visual si ocurre */}
+        {error && (
+          <div role="alert" className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+            {error}
           </div>
         )}
 
+        {/* Estado de carga */}
+        {!registro && !error && (
+          <p className="text-xs text-gray-500 italic">Cargando datos del usuario...</p>
+        )}
+
+        {/* Datos reales del usuario consultado */}
+        {registro && (
+          <div className="border border-gray-200 rounded-xl p-5 space-y-2 bg-gray-50/40">
+            <h4 className="font-bold text-gray-900">{registro.nombreCompleto}</h4>
+            <p className="text-xs text-gray-500">{registro.correo} · <span className="font-semibold text-gray-700">{registro.nombreRol ?? 'Usuario'}</span></p>
+            <p className="text-xs text-gray-600 font-medium pt-1">
+              Facultad: <span className="text-gray-900">{registro.nombreFacultad ?? 'Sin facultad asignada'}</span>
+            </p>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-500 leading-relaxed">
+          La cuenta dejará de permitir el inicio de sesión en la plataforma de gestión curricular.
+        </p>
+
+        {/* Éxito */}
+        {desactivado && (
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <p className="text-xs font-bold">¡Usuario desactivado correctamente en el sistema!</p>
+          </div>
+        )}
+
+        {/* Botones de acción */}
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
           <button
             type="button"
             onClick={() => navigate('/usuarios')}
-            className="border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-bold px-5 py-3 rounded-xl transition cursor-pointer"
+            className="border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-bold px-5 py-3 rounded-xl transition cursor-pointer shadow-sm"
           >
             {desactivado ? 'Volver al directorio' : 'Cancelar'}
           </button>
@@ -88,11 +137,12 @@ export const DesactivarUsuario: React.FC = () => {
           {!desactivado && (
             <button
               type="button"
+              disabled={!registro || guardando}
               onClick={handleDesactivar}
-              className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
+              className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm disabled:opacity-50"
             >
               <Trash2 className="w-4 h-4" />
-              Desactivar usuario
+              {guardando ? 'Desactivando...' : 'Desactivar usuario'}
             </button>
           )}
         </div>
