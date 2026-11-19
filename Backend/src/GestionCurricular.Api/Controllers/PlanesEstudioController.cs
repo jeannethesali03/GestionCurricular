@@ -219,8 +219,11 @@ public sealed class PlanesEstudioController(GestionCurricularDbContext db) : Con
         if (!incluirDesactivados)
         {
             query = query.Where(plan =>
-                plan.EstadoPlan == null
-                || plan.EstadoPlan != EstadoPlanEstudio.Desactivado);
+                (plan.EstadoPlan == null
+                    || plan.EstadoPlan != EstadoPlanEstudio.Desactivado)
+                && plan.Carrera.EstadoRegistro == EstadoRegistro.Activo
+                && plan.Carrera.Facultad.EstadoRegistro == EstadoRegistro.Activo
+                && plan.Carrera.Facultad.Sede.EstadoRegistro == EstadoRegistro.Activo);
         }
 
         var planes = await query
@@ -361,7 +364,9 @@ public sealed class PlanesEstudioController(GestionCurricularDbContext db) : Con
     {
         if (!await db.Carreras.AnyAsync(
                 carrera => carrera.IdCarrera == idCarrera
-                    && carrera.EstadoRegistro == EstadoRegistro.Activo,
+                    && carrera.EstadoRegistro == EstadoRegistro.Activo
+                    && carrera.Facultad.EstadoRegistro == EstadoRegistro.Activo
+                    && carrera.Facultad.Sede.EstadoRegistro == EstadoRegistro.Activo,
                 cancellationToken))
         {
             return BadRequest(new ProblemDetails

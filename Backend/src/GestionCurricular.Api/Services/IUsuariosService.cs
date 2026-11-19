@@ -38,6 +38,18 @@ public interface IUsuariosService
         CambiarContrasenaUsuarioRequest request,
         CancellationToken cancellationToken);
 
+    Task ActivarCuentaAsync(
+        ActivarCuentaRequest request,
+        CancellationToken cancellationToken);
+
+    Task SolicitarRestablecimientoContrasenaAsync(
+        int id,
+        CancellationToken cancellationToken);
+
+    Task RestablecerContrasenaAsync(
+        RestablecerContrasenaRequest request,
+        CancellationToken cancellationToken);
+
     Task<SesionUsuarioResponse?> IniciarSesionAsync(
         IniciarSesionRequest request,
         CancellationToken cancellationToken);

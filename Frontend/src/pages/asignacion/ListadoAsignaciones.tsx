@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Search,
@@ -17,6 +17,8 @@ import {
   Info,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { universidadApi } from '../../services/universidadApi';
+import { usuariosApi } from '../../services/usuariosApi';
 
 export interface AgrupacionAsignacionItem {
   id: string;
@@ -47,28 +49,9 @@ export const ListadoAsignaciones: React.FC = () => {
   const esSuperUsuario = rolActual === 'SUPER_USUARIO';
   const esAdministrador = rolActual === 'ADMINISTRADOR';
 
-  if (!user || (!esSuperUsuario && !esAdministrador)) {
-    return (
-      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
-        <p className="text-6xl font-extrabold text-[#050758]">404</p>
-        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
-        <p className="text-xs text-gray-500 max-w-md mx-auto">
-          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
-        </p>
-        <div className="pt-4">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
-          >
-            Regresar al inicio
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   const [tabActiva, setTabActiva] = useState<'planes' | 'asignaturas'>('planes');
+  const [facultadesDisponibles, setFacultadesDisponibles] = useState<string[]>([]);
+  const [errorCatalogos, setErrorCatalogos] = useState('');
 
   const [asignaciones, setAsignaciones] = useState<AgrupacionAsignacionItem[]>([
     {
@@ -113,10 +96,27 @@ export const ListadoAsignaciones: React.FC = () => {
   const [asignacionEstadoModal, setAsignacionEstadoModal] = useState<AgrupacionAsignacionItem | null>(null);
   const [asignacionDetalleModal, setAsignacionDetalleModal] = useState<AgrupacionAsignacionItem | null>(null);
 
-  const facultadesDisponibles = useMemo(() => {
-    const setFacs = new Set(asignaciones.map((a) => a.facultad));
-    return Array.from(setFacs);
-  }, [asignaciones]);
+  useEffect(() => {
+    if (!user || (!esSuperUsuario && !esAdministrador)) return;
+
+    let vigente = true;
+    universidadApi.listarFacultades()
+      .then((facultades) => {
+        if (!vigente) return;
+        const nombresFacultades = facultades.map((facultad) => facultad.nombreFacultad);
+        setFacultadesDisponibles(nombresFacultades);
+        setFacultadFiltro((actual) =>
+          actual === 'Todas' || nombresFacultades.includes(actual) ? actual : 'Todas',
+        );
+        setErrorCatalogos('');
+      })
+      .catch((error: unknown) => {
+        if (vigente) {
+          setErrorCatalogos(error instanceof Error ? error.message : 'No se pudieron cargar facultades y usuarios.');
+        }
+      });
+    return () => { vigente = false; };
+  }, [user, esSuperUsuario, esAdministrador]);
 
   const handleConfirmarCambioEstado = () => {
     if (!asignacionEstadoModal) return;
@@ -170,6 +170,27 @@ export const ListadoAsignaciones: React.FC = () => {
   }, [asignaciones, tabActiva, busqueda, facultadFiltro, estadoFiltro, user, esAdministrador]);
 
   const totalActivas = asignaciones.filter((a) => a.estado === 'Activa').length;
+
+  if (!user || (!esSuperUsuario && !esAdministrador)) {
+    return (
+      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
+        <p className="text-6xl font-extrabold text-[#050758]">404</p>
+        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
+        <p className="text-xs text-gray-500 max-w-md mx-auto">
+          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
+        </p>
+        <div className="pt-4">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
+          >
+            Regresar al inicio
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 relative">
@@ -258,16 +279,21 @@ export const ListadoAsignaciones: React.FC = () => {
           <div className="md:col-span-3 border border-gray-200 rounded-xl px-3.5 py-2 flex flex-col justify-center">
             <label className="text-[10px] font-medium text-gray-400">Facultad</label>
             {esSuperUsuario ? (
-              <select
-                value={facultadFiltro}
-                onChange={(e) => setFacultadFiltro(e.target.value)}
-                className="w-full text-xs font-medium text-gray-800 bg-transparent mt-0.5 focus:outline-none cursor-pointer"
-              >
-                <option value="Todas">Todas las facultades</option>
-                {facultadesDisponibles.map((fac) => (
-                  <option key={fac} value={fac}>{fac}</option>
-                ))}
-              </select>
+              <>
+                <select
+                  value={facultadFiltro}
+                  onChange={(e) => setFacultadFiltro(e.target.value)}
+                  className="w-full text-xs font-medium text-gray-800 bg-transparent mt-0.5 focus:outline-none cursor-pointer"
+                >
+                  <option value="Todas">Todas las facultades</option>
+                  {facultadesDisponibles.map((fac) => (
+                    <option key={fac} value={fac}>{fac}</option>
+                  ))}
+                </select>
+                {errorCatalogos && (
+                  <p role="alert" className="mt-1 text-xs text-red-600">{errorCatalogos}</p>
+                )}
+              </>
             ) : (
               <span className="text-xs font-medium text-gray-800 mt-0.5 truncate">
                 {user.facultadNombre || 'Ingeniería y Tecnología'}
@@ -560,27 +586,6 @@ export const EditarAsignacion: React.FC = () => {
   const esSuperUsuario = rolActual === 'SUPER_USUARIO';
   const esAdministrador = rolActual === 'ADMINISTRADOR';
 
-  if (!user || (!esSuperUsuario && !esAdministrador)) {
-    return (
-      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
-        <p className="text-6xl font-extrabold text-[#050758]">404</p>
-        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
-        <p className="text-xs text-gray-500 max-w-md mx-auto">
-          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
-        </p>
-        <div className="pt-4">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
-          >
-            Regresar al inicio
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   const [elementoActual] = useState({
     id: id || '1',
     tipo: 'Plan de Estudio',
@@ -589,12 +594,39 @@ export const EditarAsignacion: React.FC = () => {
     facultad: 'Ingeniería y Tecnología',
   });
 
-  const [docentesDisponibles] = useState<DocenteItem[]>([
-    { id: '1', nombre: 'Lucía', apellido: 'Méndez', email: 'lucia.mendez@unicaes.edu.sv', facultad: 'Ingeniería y Tecnología' },
-    { id: '2', nombre: 'Carlos', apellido: 'Ruiz', email: 'carlos.ruiz@unicaes.edu.sv', facultad: 'Ingeniería y Tecnología' },
-    { id: '3', nombre: 'Ana', apellido: 'Gómez', email: 'ana.gomez@unicaes.edu.sv', facultad: 'Ciencias Económicas' },
-    { id: '4', nombre: 'Mario', apellido: 'Hernández', email: 'mario.hernandez@unicaes.edu.sv', facultad: 'Jurisprudencia y Ciencias Sociales' },
-  ]);
+  const [docentesDisponibles, setDocentesDisponibles] = useState<DocenteItem[]>([]);
+  const [errorDocentes, setErrorDocentes] = useState('');
+  useEffect(() => {
+    if (!user || (!esSuperUsuario && !esAdministrador)) return;
+
+    let vigente = true;
+    usuariosApi.listar()
+      .then((usuarios) => {
+        if (!vigente) return;
+        setDocentesDisponibles(usuarios
+          .filter((usuario) =>
+            ['USUARIO', 'USUARIO_ESTANDAR', 'USUARIO ESTANDAR', 'USUARIO ESTÁNDAR'].includes(
+              (usuario.nombreRol ?? '').toUpperCase(),
+            )
+            && usuario.nombreFacultad !== null,
+          )
+          .map((usuario) => {
+            const partesNombre = usuario.nombreCompleto.trim().split(/\s+/);
+            const nombre = partesNombre.shift() ?? '';
+            return {
+              id: String(usuario.idUsuario),
+              nombre,
+              apellido: partesNombre.join(' '),
+              email: usuario.correo,
+              facultad: usuario.nombreFacultad ?? '',
+            };
+          }));
+      })
+      .catch((error: unknown) => {
+        if (vigente) setErrorDocentes(error instanceof Error ? error.message : 'No se pudieron cargar los usuarios.');
+      });
+    return () => { vigente = false; };
+  }, [user, esSuperUsuario, esAdministrador]);
 
   const [docentesSeleccionados, setDocentesSeleccionados] = useState<DocenteItem[]>([
     { id: '1', nombre: 'Lucía', apellido: 'Méndez', email: 'lucia.mendez@unicaes.edu.sv', facultad: 'Ingeniería y Tecnología' },
@@ -604,7 +636,7 @@ export const EditarAsignacion: React.FC = () => {
   const [docenteSeleccionTemporal, setDocenteSeleccionTemporal] = useState('');
   const [guardadoExitoso, setGuardadoExitoso] = useState(false);
 
-  const facultadUsuario = user.facultadNombre || 'Ingeniería y Tecnología';
+  const facultadUsuario = user?.facultadNombre || 'Ingeniería y Tecnología';
 
   const docentesFiltrados = docentesDisponibles
     .filter(d => {
@@ -648,6 +680,27 @@ export const EditarAsignacion: React.FC = () => {
       e.preventDefault();
     }
   };
+
+  if (!user || (!esSuperUsuario && !esAdministrador)) {
+    return (
+      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
+        <p className="text-6xl font-extrabold text-[#050758]">404</p>
+        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
+        <p className="text-xs text-gray-500 max-w-md mx-auto">
+          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
+        </p>
+        <div className="pt-4">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
+          >
+            Regresar al inicio
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-12">
@@ -725,6 +778,9 @@ export const EditarAsignacion: React.FC = () => {
                   </option>
                 ))}
               </select>
+              {errorDocentes && (
+                <p role="alert" className="mt-1 text-xs text-red-600">{errorDocentes}</p>
+              )}
             </div>
 
             <div className="md:col-span-2">

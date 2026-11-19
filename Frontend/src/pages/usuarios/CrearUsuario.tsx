@@ -1,15 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Info, CheckCircle2, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Info, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usuariosApi, type CatalogosUsuario } from '../../services/usuariosApi';
+import { universidadApi, type FacultadApi } from '../../services/universidadApi';
 
 // Función auxiliar para formatear los roles de la base de datos de forma limpia
 function formatearRol(nombreRol?: string | null): string {
   if (!nombreRol) return 'Rol sin asignar';
-  
+
   const normalizado = nombreRol.toUpperCase().trim();
-  
+
   switch (normalizado) {
     case 'SUPER_USUARIO':
     case 'SUPERUSUARIO':
@@ -19,11 +20,47 @@ function formatearRol(nombreRol?: string | null): string {
     case 'USUARIO':
     case 'USUARIO_ESTANDAR':
       return 'Usuario estándar';
-    default:
+    default: {
       const limpio = nombreRol.replace(/_/g, ' ').toLowerCase();
       return limpio.charAt(0).toUpperCase() + limpio.slice(1);
+    }
   }
 }
+
+type ObjetoConCampos = Record<string, unknown>;
+type FacultadConSede = CatalogosUsuario['facultades'][number] & ObjetoConCampos;
+type FacultadUniConSede = FacultadApi & ObjetoConCampos;
+
+type CatalogosConSedes = Omit<CatalogosUsuario, 'facultades'> & {
+  facultades: FacultadConSede[];
+  sedes?: Array<ObjetoConCampos>;
+};
+
+const CLAVES_SEDE = [
+  'nombreSede',
+  'sede',
+  'nombreCampus',
+  'campus',
+  'sucursal',
+  'nombreSucursal',
+  'region',
+  'ubicacion',
+];
+
+const obtenerSedeDeObjeto = (obj?: ObjetoConCampos | null): string => {
+  if (!obj) return '';
+  for (const clave of CLAVES_SEDE) {
+    const val = obj[clave];
+    if (typeof val === 'string' && val.trim()) {
+      return val.trim();
+    }
+  }
+  const idSede = obj.idSede ?? obj.sedeId ?? obj.IdSede ?? obj.SedeId;
+  if (idSede !== undefined && idSede !== null && String(idSede).trim() !== '') {
+    return String(idSede).trim();
+  }
+  return '';
+};
 
 export const CrearUsuario: React.FC = () => {
   const { user } = useAuth();
@@ -32,6 +69,163 @@ export const CrearUsuario: React.FC = () => {
   const rolActual = (user?.rol as string) || '';
   const esSuperUsuario = rolActual === 'SUPER_USUARIO';
   const esAdministrador = rolActual === 'ADMINISTRADOR';
+
+  // Estados funcionales de catálogos y API
+  const [catalogos, setCatalogos] = useState<CatalogosConSedes | null>(null);
+  const [facultadesUni, setFacultadesUni] = useState<FacultadUniConSede[]>([]);
+  const [idRol, setIdRol] = useState('');
+  const [sedeSeleccionada, setSedeSeleccionada] = useState('');
+  const [idFacultad, setIdFacultad] = useState('');
+
+  // Estados de los campos del formulario
+  const [nombreCompleto, setNombreCompleto] = useState('');
+  const [correo, setCorreo] = useState('');
+  const [gradoAcademico, setGradoAcademico] = useState('');
+  const [experiencia, setExperiencia] = useState(0);
+
+  // Controles visuales
+  const [errorValidacion, setErrorValidacion] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [exito, setExito] = useState(false);
+
+  // Cargar catálogos reales y facultades al montar el componente
+  useEffect(() => {
+    if (!user || (!esSuperUsuario && !esAdministrador)) return;
+
+    let vigente = true;
+    Promise.all([
+      usuariosApi.catalogos(),
+      universidadApi.listarFacultades().catch(() => [] as FacultadApi[]),
+    ])
+      .then(([resultado, listaFacultadesUni]) => {
+        if (!vigente) return;
+        const opcionesConSede = resultado as CatalogosConSedes;
+        const facUni = (listaFacultadesUni ?? []) as FacultadUniConSede[];
+
+        setCatalogos(opcionesConSede);
+        setFacultadesUni(facUni);
+
+        const rolUsuario = opcionesConSede.roles.find(
+          (rol) => rol.nombreRol.toUpperCase() === 'USUARIO',
+        );
+        setIdRol(rolUsuario ? String(rolUsuario.idRol) : '');
+
+        if (!esSuperUsuario) {
+          setIdFacultad(user?.facultadId ? String(user.facultadId) : '');
+        }
+      })
+      .catch((err: unknown) =>
+        setErrorValidacion(
+          err instanceof Error ? err.message : 'No se pudieron cargar los catálogos.',
+        ),
+      );
+    return () => { vigente = false; };
+  }, [user, esSuperUsuario, esAdministrador]);
+
+  // Sedes disponibles para el filtro del Superusuario
+  const sedesDisponibles = useMemo(() => {
+    const conjunto = new Set<string>();
+
+    catalogos?.sedes?.forEach((s) => {
+      const nombre =
+        obtenerSedeDeObjeto(s) ||
+        (typeof s.nombre === 'string' && s.nombre.trim()) ||
+        '';
+      if (nombre) conjunto.add(nombre);
+    });
+
+    facultadesUni.forEach((fac) => {
+      const sede = obtenerSedeDeObjeto(fac);
+      if (sede) conjunto.add(sede);
+    });
+
+    catalogos?.facultades.forEach((fac) => {
+      const sede = obtenerSedeDeObjeto(fac);
+      if (sede) conjunto.add(sede);
+    });
+
+    return Array.from(conjunto).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [catalogos, facultadesUni]);
+
+  // Filtrado de roles según permisos
+  const rolesDisponibles =
+    catalogos?.roles.filter((rol) => {
+      const nombre = rol.nombreRol.toUpperCase();
+      return esSuperUsuario || nombre === 'USUARIO' || nombre === 'USUARIO_ESTANDAR';
+    }) ?? [];
+
+  // Facultades filtradas según sede elegida (vacías si el Superusuario no ha elegido sede)
+  const facultadesDisponibles = useMemo(() => {
+    if (!catalogos) return [];
+
+    if (!esSuperUsuario) {
+      return catalogos.facultades.filter(
+        (facultad) => facultad.idFacultad === user?.facultadId,
+      );
+    }
+
+    if (!sedeSeleccionada) return [];
+
+    const base =
+      catalogos.facultades.length > 0 ? catalogos.facultades : facultadesUni;
+
+    return base.filter((facultad) => {
+      const facUniMatch = facultadesUni.find(
+        (fu) => String(fu.idFacultad) === String(facultad.idFacultad),
+      );
+      const sedeFac = obtenerSedeDeObjeto(facUniMatch) || obtenerSedeDeObjeto(facultad);
+      return sedeFac === sedeSeleccionada;
+    });
+  }, [catalogos, facultadesUni, esSuperUsuario, sedeSeleccionada, user?.facultadId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorValidacion('');
+
+    if (!nombreCompleto.trim()) {
+      setErrorValidacion('Debes ingresar el nombre completo.');
+      return;
+    }
+    if (!correo.trim()) {
+      setErrorValidacion('Debes ingresar el correo electrónico.');
+      return;
+    }
+    if (!gradoAcademico.trim()) {
+      setErrorValidacion('Debes ingresar el grado académico.');
+      return;
+    }
+    if (!idRol) {
+      setErrorValidacion('Debes seleccionar un rol de usuario.');
+      return;
+    }
+    if (esSuperUsuario && !sedeSeleccionada.trim()) {
+      setErrorValidacion('Debes seleccionar una sede.');
+      return;
+    }
+    if (esSuperUsuario && !idFacultad.trim()) {
+      setErrorValidacion('Debes seleccionar una facultad.');
+      return;
+    }
+
+    setGuardando(true);
+
+    try {
+      await usuariosApi.crear({
+        idRol: Number(idRol),
+        idFacultad: idFacultad ? Number(idFacultad) : null,
+        nombreCompleto: nombreCompleto.trim(),
+        gradoAcademico: gradoAcademico.trim(),
+        experienciaEducacionSuperior: experiencia,
+        correo: correo.trim(),
+      });
+
+      setExito(true);
+    } catch (err) {
+      setErrorValidacion(err instanceof Error ? err.message : 'No se pudo crear el usuario.');
+    } finally {
+      setGuardando(false);
+    }
+  };
 
   // Si es un usuario estándar (o no autenticado), muestra la pantalla limpia de Página no encontrada (404)
   if (!user || (!esSuperUsuario && !esAdministrador)) {
@@ -55,79 +249,6 @@ export const CrearUsuario: React.FC = () => {
     );
   }
 
-  // Estados funcionales de catálogos y API
-  const [catalogos, setCatalogos] = useState<CatalogosUsuario | null>(null);
-  const [idRol, setIdRol] = useState('');
-  const [idFacultad, setIdFacultad] = useState('');
-
-  // Estados de los campos del formulario
-  const [nombreCompleto, setNombreCompleto] = useState('');
-  const [correo, setCorreo] = useState('');
-  const [gradoAcademico, setGradoAcademico] = useState('');
-  const [experiencia, setExperiencia] = useState(0);
-  const [password, setPassword] = useState('Temp2026*');
-  
-  // Controles visuales
-  const [mostrarPassword, setMostrarPassword] = useState(false);
-  const [errorValidacion, setErrorValidacion] = useState('');
-  const [guardando, setGuardando] = useState(false);
-  const [exito, setExito] = useState(false);
-
-  // Cargar catálogos reales al montar el componente
-  useEffect(() => {
-    let vigente = true;
-    usuariosApi.catalogos()
-      .then((resultado) => {
-        if (!vigente) return;
-        setCatalogos(resultado);
-        const rolUsuario = resultado.roles.find((rol) => rol.nombreRol.toUpperCase() === 'USUARIO');
-        setIdRol(rolUsuario ? String(rolUsuario.idRol) : '');
-        setIdFacultad(user?.facultadId ? String(user.facultadId) : '');
-      })
-      .catch((err: unknown) => setErrorValidacion(err instanceof Error ? err.message : 'No se pudieron cargar los catálogos.'));
-    return () => { vigente = false; };
-  }, [user?.facultadId]);
-
-  // Filtrado de roles y facultades según permisos
-  const rolesDisponibles = catalogos?.roles.filter((rol) => {
-    const nombre = rol.nombreRol.toUpperCase();
-    return esSuperUsuario || nombre === 'USUARIO' || nombre === 'USUARIO_ESTANDAR';
-  }) ?? [];
-
-  const facultadesDisponibles = catalogos?.facultades.filter((facultad) =>
-    esSuperUsuario || facultad.idFacultad === user.facultadId
-  ) ?? [];
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorValidacion('');
-    setGuardando(true);
-
-    try {
-      if (password.length < 6) {
-        setErrorValidacion('La contraseña temporal debe tener al menos 6 caracteres.');
-        setGuardando(false);
-        return;
-      }
-
-      await usuariosApi.crear({
-        idRol: Number(idRol),
-        idFacultad: idFacultad ? Number(idFacultad) : null,
-        nombreCompleto: nombreCompleto.trim(),
-        gradoAcademico: gradoAcademico.trim(),
-        experienciaEducacionSuperior: experiencia,
-        correo: correo.trim(),
-        password,
-      });
-
-      setExito(true);
-    } catch (err) {
-      setErrorValidacion(err instanceof Error ? err.message : 'No se pudo crear el usuario.');
-    } finally {
-      setGuardando(false);
-    }
-  };
-
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-12">
       <div>
@@ -140,7 +261,7 @@ export const CrearUsuario: React.FC = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200/80 p-8 space-y-6 shadow-sm">
-        
+
         {/* Nombre completo */}
         <div className="space-y-1">
           <label className="text-xs font-bold text-gray-700">Nombre completo *</label>
@@ -198,8 +319,8 @@ export const CrearUsuario: React.FC = () => {
           </div>
         </div>
 
-        {/* ROL y FACULTAD */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* ROL, SEDE (Superusuario) y FACULTAD */}
+        <div className={`grid grid-cols-1 ${esSuperUsuario ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-700">Rol de usuario *</label>
             <select
@@ -217,16 +338,50 @@ export const CrearUsuario: React.FC = () => {
             </select>
           </div>
 
+          {esSuperUsuario && (
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-700">Sede *</label>
+              <select
+                required
+                value={sedeSeleccionada}
+                onChange={(e) => {
+                  setSedeSeleccionada(e.target.value);
+                  setIdFacultad('');
+                }}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 font-medium bg-white focus:outline-none focus:border-[#050758] cursor-pointer"
+              >
+                <option value="">Selecciona una sede</option>
+                {sedesDisponibles.map((sede) => (
+                  <option key={sede} value={sede}>
+                    {sede}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-700">Facultad</label>
+            <label className="text-xs font-bold text-gray-700">
+              Facultad {esSuperUsuario ? '*' : ''}
+            </label>
             <select
+              required={esSuperUsuario}
+              disabled={esSuperUsuario && !sedeSeleccionada}
               value={idFacultad}
               onChange={(e) => setIdFacultad(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 font-medium bg-white focus:outline-none focus:border-[#050758] cursor-pointer"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 font-medium bg-white focus:outline-none focus:border-[#050758] cursor-pointer disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
             >
-              <option value="">Sin facultad (Global)</option>
+              {esSuperUsuario ? (
+                <option value="">
+                  {sedeSeleccionada ? 'Selecciona una facultad' : 'Elige primero una sede'}
+                </option>
+              ) : (
+                <option value="">Sin facultad (Global)</option>
+              )}
               {facultadesDisponibles.map((facultad) => (
-                <option key={facultad.idFacultad} value={facultad.idFacultad}>{facultad.nombreFacultad}</option>
+                <option key={facultad.idFacultad} value={facultad.idFacultad}>
+                  {facultad.nombreFacultad}
+                </option>
               ))}
             </select>
           </div>
@@ -242,35 +397,11 @@ export const CrearUsuario: React.FC = () => {
           </div>
         )}
 
-        {/* Contraseña temporal visible */}
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-700">Contraseña temporal *</label>
-          <div className="relative flex items-center">
-            <input
-              type={mostrarPassword ? 'text' : 'password'}
-              required
-              minLength={6}
-              maxLength={128}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 focus:outline-none focus:border-[#050758] pr-10"
-            />
-            <button
-              type="button"
-              onClick={() => setMostrarPassword(!mostrarPassword)}
-              className="absolute right-3 text-gray-400 hover:text-gray-600 focus:outline-none cursor-pointer"
-              title={mostrarPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
-            >
-              {mostrarPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-
         {/* Mensaje informativo */}
         <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3.5 flex items-start gap-2.5">
           <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
           <p className="text-[11px] text-amber-900 leading-relaxed font-medium">
-            Al crear el usuario se registrará en la base de datos del sistema. El usuario podrá acceder utilizando su correo y la contraseña temporal establecida.
+            Se enviará al correo del usuario un enlace de activación de un solo uso, válido por 24 horas. Deberá elegir su contraseña para activar la cuenta.
           </p>
         </div>
 
@@ -291,7 +422,7 @@ export const CrearUsuario: React.FC = () => {
         {exito && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <p className="text-xs font-bold">¡Usuario creado correctamente en la base de datos del sistema!</p>
+            <p className="text-xs font-bold">¡Usuario creado! Se envió el enlace de activación a su correo.</p>
           </div>
         )}
 
@@ -305,7 +436,7 @@ export const CrearUsuario: React.FC = () => {
             Cancelar
           </button>
           <button
-            disabled={guardando || !catalogos}
+            disabled={guardando || !catalogos || exito}
             type="submit"
             className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm disabled:opacity-50"
           >

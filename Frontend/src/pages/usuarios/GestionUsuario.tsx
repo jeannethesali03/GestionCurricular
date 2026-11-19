@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, UserPlus, Edit3, Trash2, Eye, RotateCcw, AlertCircle } from 'lucide-react';
+import { Search, UserPlus, Edit3, Trash2, Eye, RotateCcw, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { usuariosApi, type Usuario } from '../../services/usuariosApi';
+import { usuariosApi, type CatalogosUsuario, type Usuario } from '../../services/usuariosApi';
+import { universidadApi, type FacultadApi } from '../../services/universidadApi';
 
 export interface UsuarioItem {
   id: string;
@@ -10,8 +11,76 @@ export interface UsuarioItem {
   apellidos: string;
   email: string;
   facultad: string;
+  sede: string;
   rol: string;
+  rolCrudo: string;
   estado: 'Activo' | 'Inactivo';
+}
+
+type ObjetoConCamposSede = Record<string, unknown>;
+
+type FacultadCatalogo = CatalogosUsuario['facultades'][number] & ObjetoConCamposSede;
+type FacultadUniversidad = FacultadApi & ObjetoConCamposSede;
+type UsuarioConSede = Usuario & ObjetoConCamposSede;
+
+const CLAVES_SEDE_STRING = [
+  'nombreSede',
+  'sede',
+  'nombreCampus',
+  'campus',
+  'sucursal',
+  'nombreSucursal',
+  'region',
+  'ubicacion',
+];
+
+function extraerTextoSede(obj?: ObjetoConCamposSede | null): string {
+  if (!obj) return '';
+  for (const clave of CLAVES_SEDE_STRING) {
+    const val = obj[clave];
+    if (typeof val === 'string' && val.trim()) {
+      return val.trim();
+    }
+  }
+  return '';
+}
+
+function extraerIdSede(obj?: ObjetoConCamposSede | null): string {
+  if (!obj) return '';
+  const candidatos = [obj.idSede, obj.sedeId, obj.IdSede, obj.SedeId];
+  for (const val of candidatos) {
+    if (val !== undefined && val !== null && String(val).trim() !== '') {
+      return String(val).trim();
+    }
+  }
+  return '';
+}
+
+function esRolEstandar(rolCrudo?: string | null): boolean {
+  if (!rolCrudo) return false;
+  const normalizado = rolCrudo.toUpperCase().trim();
+  return normalizado === 'USUARIO' || normalizado === 'USUARIO_ESTANDAR' || normalizado === 'USUARIO ESTÁNDAR';
+}
+
+function formatearRol(nombreRol?: string | null): string {
+  if (!nombreRol) return 'Rol sin asignar';
+
+  const normalizado = nombreRol.toUpperCase().trim();
+
+  switch (normalizado) {
+    case 'SUPER_USUARIO':
+    case 'SUPERUSUARIO':
+      return 'Super usuario';
+    case 'ADMINISTRADOR':
+      return 'Administrador';
+    case 'USUARIO':
+    case 'USUARIO_ESTANDAR':
+      return 'Usuario estándar';
+    default: {
+      const limpio = nombreRol.replace(/_/g, ' ').toLowerCase();
+      return limpio.charAt(0).toUpperCase() + limpio.slice(1);
+    }
+  }
 }
 
 export const GestionUsuario: React.FC = () => {
@@ -24,27 +93,51 @@ export const GestionUsuario: React.FC = () => {
 
   // Estados funcionales reales conectados a la API
   const [usuarios, setUsuarios] = useState<UsuarioItem[]>([]);
-  const [facultades, setFacultades] = useState<string[]>([]);
+  const [facultadesCatalogo, setFacultadesCatalogo] = useState<FacultadCatalogo[]>([]);
+  const [facultadesUniversidad, setFacultadesUniversidad] = useState<FacultadUniversidad[]>([]);
+  const [sedesDesdeCatalogo, setSedesDesdeCatalogo] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(true);
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<UsuarioItem | null>(null);
   const [guardandoEstado, setGuardandoEstado] = useState(false);
   const [errorEstado, setErrorEstado] = useState('');
+  const [mensajeEstado, setMensajeEstado] = useState('');
 
   const [busqueda, setBusqueda] = useState('');
+  const [sedeFiltro, setSedeFiltro] = useState('Todas');
   const [facultadFiltro, setFacultadFiltro] = useState('Todas');
   const [estadoFiltro, setEstadoFiltro] = useState('Todos');
 
-  // Cargar usuarios y catálogos al montar el componente
+  // Cargar usuarios, catálogos y facultades al montar el componente
   useEffect(() => {
     if (!user || (!esSuperUsuario && !esAdministrador)) return;
 
     let vigente = true;
-    Promise.all([usuariosApi.listar(true), usuariosApi.catalogos()])
-      .then(([resultado, catalogos]) => {
+    Promise.all([
+      usuariosApi.listar(true),
+      usuariosApi.catalogos(),
+      universidadApi.listarFacultades(true),
+      universidadApi.listarSedes(),
+    ])
+      .then(([resultado, catalogos, facultadesUni, sedesActivas]) => {
         if (!vigente) return;
-        setUsuarios(resultado.map(mapearUsuario));
-        setFacultades(catalogos.facultades.map((facultad) => facultad.nombreFacultad));
+
+        const mapaIdSedeANombre = new Map<string, string>();
+        sedesActivas.forEach((sede) => {
+          mapaIdSedeANombre.set(String(sede.idSede), sede.nombreSede);
+        });
+
+        const listaFacUni = (facultadesUni ?? []) as FacultadUniversidad[];
+        const listaFacCat = (catalogos.facultades ?? []) as FacultadCatalogo[];
+
+        setSedesDesdeCatalogo(sedesActivas.map((sede) => sede.nombreSede));
+        setFacultadesUniversidad(listaFacUni);
+        setFacultadesCatalogo(listaFacCat);
+        setUsuarios(
+          (resultado as UsuarioConSede[]).map((u) =>
+            mapearUsuario(u, listaFacCat, listaFacUni, mapaIdSedeANombre),
+          ),
+        );
         setError('');
       })
       .catch((err: unknown) => {
@@ -56,19 +149,47 @@ export const GestionUsuario: React.FC = () => {
     return () => { vigente = false; };
   }, [user, esSuperUsuario, esAdministrador]);
 
+  // Usuarios visibles según alcance del rol autenticado (Admin: solo usuarios estándar de su facultad)
+  const usuariosEnAlcance = useMemo(() => {
+    return usuarios.filter((item) => {
+      if (esAdministrador) {
+        const mismaFacultad = !user?.facultadNombre || item.facultad === user.facultadNombre;
+        return mismaFacultad && esRolEstandar(item.rolCrudo);
+      }
+      return true;
+    });
+  }, [usuarios, esAdministrador, user]);
+
+  // Sedes disponibles combinando catálogo de sedes, facultades y usuarios en alcance
+  const sedesDisponibles = useMemo(() => {
+    return [...sedesDesdeCatalogo].sort((a, b) => a.localeCompare(b, 'es'));
+  }, [sedesDesdeCatalogo]);
+
+  // Facultades filtradas según la sede elegida
+  const facultadesFiltradasPorSede = useMemo(() => {
+    return facultadesCatalogo
+      .filter((facultad) => {
+        if (sedeFiltro === 'Todas') return true;
+        const facultadUniversidad = facultadesUniversidad.find(
+          (item) => item.idFacultad === facultad.idFacultad,
+        );
+        return extraerTextoSede(facultadUniversidad) === sedeFiltro;
+      })
+      .map((facultad) => facultad.nombreFacultad);
+  }, [facultadesCatalogo, facultadesUniversidad, sedeFiltro]);
+
   // Filtrado y ordenamiento automático: Activos primero, Inactivos al final
   const usuariosFiltrados = useMemo(() => {
-    const filtrados = usuarios.filter((item) => {
-      if (esAdministrador && user?.facultadNombre && item.facultad !== user.facultadNombre) {
-        return false;
-      }
-
+    const filtrados = usuariosEnAlcance.filter((item) => {
       const texto = busqueda.toLowerCase().trim();
       const coincideTexto =
         !texto ||
         item.nombres.toLowerCase().includes(texto) ||
         item.apellidos.toLowerCase().includes(texto) ||
         item.email.toLowerCase().includes(texto);
+
+      const coincideSede =
+        sedeFiltro === 'Todas' || item.sede === sedeFiltro;
 
       const coincideFacultad =
         facultadFiltro === 'Todas' || item.facultad === facultadFiltro;
@@ -78,7 +199,7 @@ export const GestionUsuario: React.FC = () => {
         (estadoFiltro === 'Activos' && item.estado === 'Activo') ||
         (estadoFiltro === 'Inactivos' && item.estado === 'Inactivo');
 
-      return coincideTexto && coincideFacultad && coincideEstado;
+      return coincideTexto && coincideSede && coincideFacultad && coincideEstado;
     });
 
     return filtrados.sort((a, b) => {
@@ -86,9 +207,9 @@ export const GestionUsuario: React.FC = () => {
       if (a.estado === 'Inactivo' && b.estado === 'Activo') return 1;
       return 0;
     });
-  }, [usuarios, busqueda, facultadFiltro, estadoFiltro, user, esAdministrador]);
+  }, [usuariosEnAlcance, busqueda, sedeFiltro, facultadFiltro, estadoFiltro]);
 
-  const totalActivos = usuarios.filter((u) => u.estado === 'Activo').length;
+  const totalActivos = usuariosEnAlcance.filter((u) => u.estado === 'Activo').length;
 
   const handleCambiarEstado = async () => {
     if (!usuarioSeleccionado) return;
@@ -96,16 +217,21 @@ export const GestionUsuario: React.FC = () => {
     const activar = usuarioSeleccionado.estado === 'Inactivo';
     setGuardandoEstado(true);
     setErrorEstado('');
+    setMensajeEstado('');
     try {
       await usuariosApi.cambiarEstado(usuarioSeleccionado.id, activar);
-      setUsuarios((actuales) =>
-        actuales.map((usuario) =>
-          usuario.id === usuarioSeleccionado.id
-            ? { ...usuario, estado: activar ? 'Activo' : 'Inactivo' }
-            : usuario,
-        ),
-      );
-      setUsuarioSeleccionado(null);
+      if (activar) {
+        setMensajeEstado('Se envió el enlace de activación. La cuenta seguirá inactiva hasta que el usuario establezca una contraseña con ese enlace.');
+      } else {
+        setUsuarios((actuales) =>
+          actuales.map((usuario) =>
+            usuario.id === usuarioSeleccionado.id
+              ? { ...usuario, estado: 'Inactivo' }
+              : usuario,
+          ),
+        );
+        setUsuarioSeleccionado(null);
+      }
     } catch (err) {
       setErrorEstado(err instanceof Error ? err.message : 'No se pudo cambiar el estado del usuario.');
     } finally {
@@ -146,7 +272,7 @@ export const GestionUsuario: React.FC = () => {
           <p className="text-sm text-gray-500 mt-1">
             {esSuperUsuario
               ? 'Administra los usuarios del sistema de todas las facultades.'
-              : `Crea y administra únicamente usuarios de ${user.facultadNombre || 'tu facultad'}.`}
+              : `Crea y administra únicamente usuarios estándar de ${user.facultadNombre || 'tu facultad'}.`}
           </p>
         </div>
 
@@ -168,7 +294,7 @@ export const GestionUsuario: React.FC = () => {
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200/80 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
-          <p className="text-3xl font-extrabold text-[#050758]">{usuarios.length}</p>
+          <p className="text-3xl font-extrabold text-[#050758]">{usuariosEnAlcance.length}</p>
           <p className="text-sm font-bold text-gray-800 mt-2">Total en directorio</p>
         </div>
 
@@ -198,7 +324,7 @@ export const GestionUsuario: React.FC = () => {
 
         {/* Barra de Filtros */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-          <div className="md:col-span-6 border border-gray-200 rounded-xl px-3.5 py-2 flex flex-col justify-center">
+          <div className="md:col-span-4 border border-gray-200 rounded-xl px-3.5 py-2 flex flex-col justify-center">
             <label className="text-[10px] font-medium text-gray-400">Buscar</label>
             <div className="flex items-center gap-2 mt-0.5">
               <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
@@ -212,6 +338,29 @@ export const GestionUsuario: React.FC = () => {
             </div>
           </div>
 
+          <div className="md:col-span-2 border border-gray-200 rounded-xl px-3.5 py-2 flex flex-col justify-center">
+            <label className="text-[10px] font-medium text-gray-400">Sede</label>
+            {esSuperUsuario ? (
+              <select
+                value={sedeFiltro}
+                onChange={(e) => {
+                  setSedeFiltro(e.target.value);
+                  setFacultadFiltro('Todas');
+                }}
+                className="w-full text-xs font-medium text-gray-800 bg-transparent mt-0.5 focus:outline-none cursor-pointer"
+              >
+                <option value="Todas">Todas las sedes</option>
+                {sedesDisponibles.map((sede) => (
+                  <option key={sede} value={sede}>{sede}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-xs font-medium text-gray-800 mt-0.5 truncate">
+                {sedesDisponibles[0] || 'Sede asignada'}
+              </span>
+            )}
+          </div>
+
           <div className="md:col-span-3 border border-gray-200 rounded-xl px-3.5 py-2 flex flex-col justify-center">
             <label className="text-[10px] font-medium text-gray-400">Facultad</label>
             {esSuperUsuario ? (
@@ -221,7 +370,7 @@ export const GestionUsuario: React.FC = () => {
                 className="w-full text-xs font-medium text-gray-800 bg-transparent mt-0.5 focus:outline-none cursor-pointer"
               >
                 <option value="Todas">Todas las facultades</option>
-                {facultades.map((fac) => (
+                {facultadesFiltradasPorSede.map((fac) => (
                   <option key={fac} value={fac}>{fac}</option>
                 ))}
               </select>
@@ -315,6 +464,7 @@ export const GestionUsuario: React.FC = () => {
                           type="button"
                           onClick={() => {
                             setErrorEstado('');
+                            setMensajeEstado('');
                             setUsuarioSeleccionado(item);
                           }}
                           title={item.estado === 'Activo' ? 'Desactivar usuario' : 'Activar usuario'}
@@ -351,13 +501,23 @@ export const GestionUsuario: React.FC = () => {
             className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
           >
             <h3 id="cambiar-estado-titulo" className="text-lg font-bold text-gray-900">
-              {usuarioSeleccionado.estado === 'Activo' ? 'Desactivar usuario' : 'Activar usuario'}
+              {mensajeEstado
+                ? 'Enlace de activación enviado'
+                : usuarioSeleccionado.estado === 'Activo'
+                  ? 'Desactivar usuario'
+                  : 'Enviar activación al usuario'}
             </h3>
             <p className="mt-2 text-sm text-gray-600">
-              {usuarioSeleccionado.estado === 'Activo'
+              {mensajeEstado || (usuarioSeleccionado.estado === 'Activo'
                 ? `¿Deseas desactivar a ${usuarioSeleccionado.nombres}? Se conservarán sus datos e historial.`
-                : `¿Deseas volver a activar a ${usuarioSeleccionado.nombres}? Podrá iniciar sesión nuevamente.`}
+                : `Se enviará a ${usuarioSeleccionado.email} un enlace de un solo uso, válido por 24 horas. El usuario deberá establecer una nueva contraseña para volver a iniciar sesión.`)}
             </p>
+            {mensajeEstado && (
+              <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                Correo enviado correctamente.
+              </div>
+            )}
             {errorEstado && (
               <div role="alert" className="mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
                 <AlertCircle className="h-4 w-4 shrink-0" />
@@ -368,26 +528,38 @@ export const GestionUsuario: React.FC = () => {
               <button
                 type="button"
                 disabled={guardandoEstado}
-                onClick={() => setUsuarioSeleccionado(null)}
+                onClick={() => {
+                  setUsuarioSeleccionado(null);
+                  setMensajeEstado('');
+                }}
                 className="rounded-xl border border-gray-300 px-4 py-2.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
               >
-                Cancelar
+                {mensajeEstado ? 'Cerrar' : 'Cancelar'}
               </button>
               <button
                 type="button"
                 disabled={guardandoEstado}
-                onClick={handleCambiarEstado}
+                onClick={mensajeEstado
+                  ? () => {
+                    setUsuarioSeleccionado(null);
+                    setMensajeEstado('');
+                  }
+                  : handleCambiarEstado}
                 className={`rounded-xl px-4 py-2.5 text-xs font-bold text-white transition disabled:opacity-50 ${
-                  usuarioSeleccionado.estado === 'Activo'
+                  mensajeEstado
+                    ? 'bg-[#050758] hover:bg-[#090c7a]'
+                    : usuarioSeleccionado.estado === 'Activo'
                     ? 'bg-red-600 hover:bg-red-700'
                     : 'bg-emerald-600 hover:bg-emerald-700'
                 }`}
               >
-                {guardandoEstado
+                {mensajeEstado
+                  ? 'Listo'
+                  : guardandoEstado
                   ? 'Guardando...'
                   : usuarioSeleccionado.estado === 'Activo'
                     ? 'Desactivar'
-                    : 'Activar'}
+                    : 'Enviar enlace'}
               </button>
             </div>
           </div>
@@ -397,22 +569,38 @@ export const GestionUsuario: React.FC = () => {
   );
 };
 
-// Función auxiliar para mapear datos del backend al formato de la interfaz
-function mapearUsuario(usuario: Usuario): UsuarioItem {
-  const nombreRol = usuario.nombreRol?.toUpperCase();
-  const rol = nombreRol === 'SUPER_USUARIO' || nombreRol === 'SUPERUSUARIO'
-    ? 'Superusuario'
-    : nombreRol === 'ADMINISTRADOR'
-      ? 'Administrador'
-      : 'Usuario Estándar';
-      
+function mapearUsuario(
+  usuario: UsuarioConSede,
+  facultadesCat: FacultadCatalogo[],
+  facultadesUni: FacultadUniversidad[],
+  mapaIdSedeANombre: Map<string, string>,
+): UsuarioItem {
+  const facUniMatch = facultadesUni.find(
+    (f) => f.nombreFacultad === usuario.nombreFacultad,
+  );
+  const facCatMatch = facultadesCat.find(
+    (f) => f.nombreFacultad === usuario.nombreFacultad,
+  );
+
+  const sedeUsuario =
+    extraerTextoSede(usuario) ||
+    (extraerIdSede(usuario) ? mapaIdSedeANombre.get(extraerIdSede(usuario)) ?? '' : '');
+  const sedeFacUni =
+    extraerTextoSede(facUniMatch) ||
+    (extraerIdSede(facUniMatch) ? mapaIdSedeANombre.get(extraerIdSede(facUniMatch)) ?? '' : '');
+  const sedeFacCat =
+    extraerTextoSede(facCatMatch) ||
+    (extraerIdSede(facCatMatch) ? mapaIdSedeANombre.get(extraerIdSede(facCatMatch)) ?? '' : '');
+
   return {
     id: String(usuario.idUsuario),
     nombres: usuario.nombreCompleto,
     apellidos: '',
     email: usuario.correo,
     facultad: usuario.nombreFacultad ?? 'Sin facultad',
-    rol,
+    sede: sedeUsuario || sedeFacUni || sedeFacCat || 'Sin sede',
+    rol: formatearRol(usuario.nombreRol),
+    rolCrudo: usuario.nombreRol ?? '',
     estado: usuario.estadoCuenta === 'activo' ? 'Activo' : 'Inactivo',
   };
 }

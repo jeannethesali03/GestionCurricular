@@ -51,6 +51,7 @@ public sealed class UsuariosController(IUsuariosService usuarios) : ControllerBa
     [ProducesResponseType(typeof(UsuarioResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<UsuarioResponse>> Crear(
         CrearUsuarioRequest request,
         CancellationToken cancellationToken)
@@ -88,16 +89,32 @@ public sealed class UsuariosController(IUsuariosService usuarios) : ControllerBa
             : NotFound();
     }
 
+    /// <summary>Envía un enlace de activación de un solo uso a una cuenta inactiva.</summary>
     [HttpPut("{id:int}/activar")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Activar(
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> SolicitarActivacion(
         int id,
         CancellationToken cancellationToken)
     {
         return await usuarios.CambiarEstadoAsync(id, true, cancellationToken)
-            ? NoContent()
+            ? Accepted()
             : NotFound();
+    }
+
+    /// <summary>Envía al usuario un enlace de un solo uso para elegir una contraseña nueva.</summary>
+    [HttpPost("{id:int}/restablecer-contrasena")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> SolicitarRestablecimientoContrasena(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        await usuarios.SolicitarRestablecimientoContrasenaAsync(id, cancellationToken);
+        return Accepted();
     }
 
     [HttpPut("{id:int}/perfil")]

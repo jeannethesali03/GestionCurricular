@@ -19,6 +19,7 @@ public class GestionCurricularDbContext : DbContext
     public DbSet<Carrera> Carreras => Set<Carrera>();
     public DbSet<Usuario> Usuarios => Set<Usuario>();
     public DbSet<TokenAutenticacion> TokensAutenticacion => Set<TokenAutenticacion>();
+    public DbSet<RestauracionJerarquia> RestauracionesJerarquia => Set<RestauracionJerarquia>();
     public DbSet<RegistroCambio> RegistrosCambios => Set<RegistroCambio>();
     public DbSet<PlanEstudio> PlanesEstudio => Set<PlanEstudio>();
     public DbSet<UsuarioParticipantePlan> UsuariosParticipantesPlan => Set<UsuarioParticipantePlan>();
@@ -63,6 +64,8 @@ public class GestionCurricularDbContext : DbContext
         modelBuilder.Entity<TokenAutenticacion>()
             .HasIndex(entity => entity.Token)
             .IsUnique();
+        modelBuilder.Entity<RestauracionJerarquia>()
+            .HasIndex(entity => new { entity.TipoRaiz, entity.IdRaiz });
         modelBuilder.Entity<Asignatura>()
             .HasIndex(entity => entity.NumeroOrden)
             .IsUnique();
@@ -80,6 +83,9 @@ public class GestionCurricularDbContext : DbContext
             .HasConversion(new ValueConverter<TipoTokenAutenticacion, string>(
                 value => TokenTypeToDatabase(value),
                 value => TokenTypeFromDatabase(value)));
+        modelBuilder.Entity<TokenAutenticacion>()
+            .Property(entity => entity.Intentos)
+            .HasDefaultValue(0);
         modelBuilder.Entity<PlanEstudio>()
             .Property(entity => entity.Modalidad)
             .HasConversion(new ValueConverter<ModalidadPlanEstudio, string>(
@@ -356,6 +362,7 @@ public class GestionCurricularDbContext : DbContext
         TipoTokenAutenticacion.Activacion => "activacion",
         TipoTokenAutenticacion.Invitacion => "invitacion",
         TipoTokenAutenticacion.ResetPassword => "reset_password",
+        TipoTokenAutenticacion.CodigoDesactivacion => "codigo_desactivacion",
         _ => throw new InvalidOperationException($"Tipo de token no soportado: {value}.")
     };
 
@@ -420,6 +427,7 @@ public class GestionCurricularDbContext : DbContext
         "activacion" => TipoTokenAutenticacion.Activacion,
         "invitacion" => TipoTokenAutenticacion.Invitacion,
         "reset_password" => TipoTokenAutenticacion.ResetPassword,
+        "codigo_desactivacion" => TipoTokenAutenticacion.CodigoDesactivacion,
         _ => throw new InvalidOperationException($"Tipo de token almacenado no soportado: {value}.")
     };
 

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Info, ArrowUpRight, Plus, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { universidadApi } from '../../services/universidadApi';
 
 export interface AsignaturaPrograma {
   id: string;
@@ -22,6 +23,8 @@ export const AsignaturasUsuario: React.FC = () => {
 
   const [asignaturas, setAsignaturas] = useState<AsignaturaPrograma[]>([]);
   const [cargando, setCargando] = useState<boolean>(true);
+  const [facultadesActivas, setFacultadesActivas] = useState<string[]>([]);
+  const [errorFacultades, setErrorFacultades] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const [cicloFiltro, setCicloFiltro] = useState('Todos');
   const [facultadFiltro, setFacultadFiltro] = useState('Todas');
@@ -30,9 +33,6 @@ export const AsignaturasUsuario: React.FC = () => {
 
   useEffect(() => {
     if (!user) return;
-    if (rolActual !== 'SUPER_USUARIO' && user.facultadNombre) {
-      setFacultadFiltro(user.facultadNombre);
-    }
 
     const obtenerAsignaturas = async () => {
       try {
@@ -46,7 +46,7 @@ export const AsignaturasUsuario: React.FC = () => {
         } else {
           throw new Error('Error al conectar con el servidor');
         }
-      } catch (error) {
+      } catch {
         const datosMock: AsignaturaPrograma[] = [
           {
             id: 'asig-01',
@@ -106,12 +106,31 @@ export const AsignaturasUsuario: React.FC = () => {
     obtenerAsignaturas();
   }, [user, rolActual]);
 
+  useEffect(() => {
+    let vigente = true;
+    universidadApi.listarFacultades()
+      .then((facultades) => {
+        if (vigente) setFacultadesActivas(facultades.map((facultad) => facultad.nombreFacultad));
+      })
+      .catch((error: unknown) => {
+        if (vigente) {
+          setErrorFacultades(error instanceof Error ? error.message : 'No se pudieron cargar las facultades.');
+        }
+      });
+    return () => { vigente = false; };
+  }, []);
+
   const facultadesDisponibles = useMemo(() => {
-    return Array.from(new Set(asignaturas.map((a) => a.facultad)));
-  }, [asignaturas]);
+    return Array.from(new Set(asignaturas
+      .map((asignatura) => asignatura.facultad)
+      .filter((facultad) => facultadesActivas.includes(facultad))));
+  }, [asignaturas, facultadesActivas]);
 
   const asignaturasFiltradas = useMemo(() => {
     const facultadUsuario = user?.facultadNombre || 'Ingeniería y Tecnología';
+    const facultadFiltroAplicado = rolActual === 'SUPER_USUARIO'
+      ? facultadFiltro
+      : facultadUsuario;
 
     return asignaturas.filter((item) => {
       const coincideTexto =
@@ -120,29 +139,25 @@ export const AsignaturasUsuario: React.FC = () => {
 
       const coincideCiclo =
         cicloFiltro === 'Todos' || item.ciclo === cicloFiltro;
+      const facultadActiva = facultadesActivas.includes(item.facultad);
 
-      let coincidePermisoYAlcance = true;
+      const coincidePermisoYAlcance = rolActual === 'SUPER_USUARIO'
+        ? facultadFiltroAplicado === 'Todas' || item.facultad === facultadFiltroAplicado
+        : rolActual === 'ADMINISTRADOR'
+          ? item.facultad === facultadUsuario
+          : item.facultad === facultadUsuario && item.asignadoAUsuarioId === user?.id;
 
-      if (rolActual === 'SUPER_USUARIO') {
-        coincidePermisoYAlcance = facultadFiltro === 'Todas' || item.facultad === facultadFiltro;
-      } else if (rolActual === 'ADMINISTRADOR') {
-        coincidePermisoYAlcance = item.facultad === facultadUsuario;
-      } else {
-        coincidePermisoYAlcance =
-          item.facultad === facultadUsuario && item.asignadoAUsuarioId === user?.id;
-      }
-
-      return coincideTexto && coincideCiclo && coincidePermisoYAlcance;
+      return facultadActiva && coincideTexto && coincideCiclo && coincidePermisoYAlcance;
     });
-  }, [asignaturas, busqueda, cicloFiltro, facultadFiltro, user, rolActual]);
-
-  if (!user) return null;
+  }, [asignaturas, busqueda, cicloFiltro, facultadFiltro, facultadesActivas, user, rolActual]);
 
   const asignaturaPrincipal = asignaturasFiltradas[0];
 
   const ciclosDisponibles = useMemo(() => {
     return Array.from(new Set(asignaturas.map((a) => a.ciclo)));
   }, [asignaturas]);
+
+  if (!user) return null;
 
   const obtenerEncabezado = () => {
     if (rolActual === 'USUARIO_ESTANDAR' || rolActual === 'USUARIO') {
@@ -276,6 +291,9 @@ export const AsignaturasUsuario: React.FC = () => {
                 </option>
               ))}
             </select>
+            {errorFacultades && (
+              <p role="alert" className="mt-1 text-xs text-red-600">{errorFacultades}</p>
+            )}
           </div>
 
           <div className="md:col-span-3 border border-gray-200 rounded-xl px-3.5 py-2 flex flex-col justify-center">

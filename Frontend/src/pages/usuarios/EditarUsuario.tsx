@@ -1,8 +1,66 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Info, CheckCircle2, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Info, CheckCircle2, KeyRound, AlertCircle, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usuariosApi, type CatalogosUsuario, type Usuario } from '../../services/usuariosApi';
+import { universidadApi, type FacultadApi } from '../../services/universidadApi';
+
+function formatearRol(nombreRol?: string | null): string {
+  if (!nombreRol) return 'Rol sin asignar';
+
+  const normalizado = nombreRol.toUpperCase().trim();
+
+  switch (normalizado) {
+    case 'SUPER_USUARIO':
+    case 'SUPERUSUARIO':
+      return 'Super usuario';
+    case 'ADMINISTRADOR':
+      return 'Administrador';
+    case 'USUARIO':
+    case 'USUARIO_ESTANDAR':
+      return 'Usuario estándar';
+    default: {
+      const limpio = nombreRol.replace(/_/g, ' ').toLowerCase();
+      return limpio.charAt(0).toUpperCase() + limpio.slice(1);
+    }
+  }
+}
+
+type ObjetoConCampos = Record<string, unknown>;
+
+type FacultadConSede = CatalogosUsuario['facultades'][number] & ObjetoConCampos;
+type FacultadUniConSede = FacultadApi & ObjetoConCampos;
+
+type CatalogosConSedes = Omit<CatalogosUsuario, 'facultades'> & {
+  facultades: FacultadConSede[];
+  sedes?: Array<ObjetoConCampos>;
+};
+
+const CLAVES_SEDE = [
+  'nombreSede',
+  'sede',
+  'nombreCampus',
+  'campus',
+  'sucursal',
+  'nombreSucursal',
+  'region',
+  'ubicacion',
+];
+
+const obtenerSedeDeObjeto = (obj?: ObjetoConCampos | null): string => {
+  if (!obj) return '';
+  for (const clave of CLAVES_SEDE) {
+    const val = obj[clave];
+    if (typeof val === 'string' && val.trim()) {
+      return val.trim();
+    }
+  }
+  const idSede = obj.idSede ?? obj.sedeId ?? obj.IdSede ?? obj.SedeId;
+  if (idSede !== undefined && idSede !== null && String(idSede).trim() !== '') {
+    return String(idSede).trim();
+  }
+  return '';
+};
 
 export const EditarUsuario: React.FC = () => {
   const { user } = useAuth();
@@ -12,6 +70,118 @@ export const EditarUsuario: React.FC = () => {
   const rolActual = (user?.rol as string) || '';
   const esSuperUsuario = rolActual === 'SUPER_USUARIO';
   const esAdministrador = rolActual === 'ADMINISTRADOR';
+
+  // Estados funcionales de la API
+  const [catalogos, setCatalogos] = useState<CatalogosConSedes | null>(null);
+  const [facultadesUni, setFacultadesUni] = useState<FacultadUniConSede[]>([]);
+  const [registro, setRegistro] = useState<Usuario | null>(null);
+
+  const [nombreCompleto, setNombreCompleto] = useState('');
+  const [correo, setCorreo] = useState('');
+  const [gradoAcademico, setGradoAcademico] = useState('');
+  const [experiencia, setExperiencia] = useState(0);
+  const [idRol, setIdRol] = useState('');
+  const [sedeSeleccionada, setSedeSeleccionada] = useState('');
+  const [idFacultad, setIdFacultad] = useState('');
+
+  // Estado para enviar el enlace de cambio de contraseña
+  const [modalGenerarContrasena, setModalGenerarContrasena] = useState(false);
+  const [generandoContrasena, setGenerandoContrasena] = useState(false);
+  const [errorGenerarContrasena, setErrorGenerarContrasena] = useState('');
+  const [exitoGenerarContrasena, setExitoGenerarContrasena] = useState(false);
+
+  // Estados de control visual y feedback
+  const [errorValidacion, setErrorValidacion] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [exito, setExito] = useState(false);
+  const [mensajeExito, setMensajeExito] = useState('');
+
+  // Cargar datos del usuario, catálogos y facultades al montar el componente
+  useEffect(() => {
+    if (!user || (!esSuperUsuario && !esAdministrador)) return;
+    if (!id) return;
+    let vigente = true;
+    Promise.all([
+      usuariosApi.obtener(id),
+      usuariosApi.catalogos(),
+      universidadApi.listarFacultades().catch(() => [] as FacultadApi[]),
+    ])
+      .then(([usuario, opciones, listaFacultadesUni]) => {
+        if (!vigente) return;
+        const opcionesConSede = opciones as CatalogosConSedes;
+        const facUni = (listaFacultadesUni ?? []) as FacultadUniConSede[];
+
+        setRegistro(usuario);
+        setCatalogos(opcionesConSede);
+        setFacultadesUni(facUni);
+        setIdRol(usuario.idRol ? String(usuario.idRol) : '');
+        setNombreCompleto(usuario.nombreCompleto ?? '');
+        setCorreo(usuario.correo ?? '');
+        setGradoAcademico(usuario.gradoAcademico ?? '');
+        setExperiencia(usuario.experienciaEducacionSuperior ?? 0);
+
+        const facultadInicialId = usuario.idFacultad ? String(usuario.idFacultad) : '';
+        setIdFacultad(facultadInicialId);
+
+        const facCatInicial = opcionesConSede.facultades.find(
+          (f) => String(f.idFacultad) === facultadInicialId,
+        );
+        const facUniInicial = facUni.find(
+          (f) => String(f.idFacultad) === facultadInicialId,
+        );
+        const sedeInicial =
+          obtenerSedeDeObjeto(facUniInicial) || obtenerSedeDeObjeto(facCatInicial) || '';
+        setSedeSeleccionada(sedeInicial);
+      })
+      .catch((err: unknown) => {
+        if (vigente) setErrorValidacion(err instanceof Error ? err.message : 'No se pudo cargar el usuario.');
+      });
+    return () => { vigente = false; };
+  }, [id, user, esSuperUsuario, esAdministrador]);
+
+  // Sedes disponibles combinando catálogo, facultades de universidad y facultades de usuarios
+  const sedesDisponibles = useMemo(() => {
+    const conjunto = new Set<string>();
+
+    catalogos?.sedes?.forEach((s) => {
+      const nombre =
+        obtenerSedeDeObjeto(s) ||
+        (typeof s.nombre === 'string' && s.nombre.trim()) ||
+        '';
+      if (nombre) conjunto.add(nombre);
+    });
+
+    facultadesUni.forEach((fac) => {
+      if (!esSuperUsuario && fac.idFacultad !== user?.facultadId) return;
+      const sede = obtenerSedeDeObjeto(fac);
+      if (sede) conjunto.add(sede);
+    });
+
+    catalogos?.facultades.forEach((fac) => {
+      if (!esSuperUsuario && fac.idFacultad !== user?.facultadId) return;
+      const sede = obtenerSedeDeObjeto(fac);
+      if (sede) conjunto.add(sede);
+    });
+
+    return Array.from(conjunto).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [catalogos, facultadesUni, esSuperUsuario, user?.facultadId]);
+
+  // Facultades filtradas según permisos y sede elegida (vacías si no hay sede elegida)
+  const facultadesDisponibles = useMemo(() => {
+    if (!catalogos || !sedeSeleccionada) return [];
+
+    const base =
+      catalogos.facultades.length > 0 ? catalogos.facultades : facultadesUni;
+
+    return base.filter((facultad) => {
+      const cumplePermiso = esSuperUsuario || facultad.idFacultad === user?.facultadId;
+      const facUniMatch = facultadesUni.find(
+        (fu) => String(fu.idFacultad) === String(facultad.idFacultad),
+      );
+      const sedeFac = obtenerSedeDeObjeto(facUniMatch) || obtenerSedeDeObjeto(facultad);
+      return cumplePermiso && sedeFac === sedeSeleccionada;
+    });
+  }, [catalogos, facultadesUni, sedeSeleccionada, esSuperUsuario, user?.facultadId]);
 
   // Si es un usuario estándar (o no autenticado), muestra la pantalla limpia de Página no encontrada (404)
   if (!user || (!esSuperUsuario && !esAdministrador)) {
@@ -35,89 +205,114 @@ export const EditarUsuario: React.FC = () => {
     );
   }
 
-  // Estados funcionales de la API
-  const [catalogos, setCatalogos] = useState<CatalogosUsuario | null>(null);
-  const [registro, setRegistro] = useState<Usuario | null>(null);
-  
-  const [nombreCompleto, setNombreCompleto] = useState('');
-  const [correo, setCorreo] = useState('');
-  const [gradoAcademico, setGradoAcademico] = useState('');
-  const [experiencia, setExperiencia] = useState(0);
-  const [idRol, setIdRol] = useState('');
-  const [idFacultad, setIdFacultad] = useState('');
-  const [password, setPassword] = useState('');
-  const [activo, setActivo] = useState(true);
-
-  // Estados de control visual y feedback
-  const [mostrarPassword, setMostrarPassword] = useState(false);
-  const [errorValidacion, setErrorValidacion] = useState('');
-  const [guardando, setGuardando] = useState(false);
-  const [exito, setExito] = useState(false);
-
-  // Cargar datos del usuario y catálogos al montar el componente
-  useEffect(() => {
-    if (!id) return;
-    let vigente = true;
-    Promise.all([usuariosApi.obtener(id), usuariosApi.catalogos()])
-      .then(([usuario, opciones]) => {
-        if (!vigente) return;
-        setRegistro(usuario);
-        setCatalogos(opciones);
-        setIdRol(String(usuario.idRol));
-        setIdFacultad(usuario.idFacultad ? String(usuario.idFacultad) : '');
-        setNombreCompleto(usuario.nombreCompleto);
-        setCorreo(usuario.correo);
-        setGradoAcademico(usuario.gradoAcademico);
-        setExperiencia(usuario.experienciaEducacionSuperior);
-        setActivo(usuario.estadoCuenta === 'activo');
-      })
-      .catch((err: unknown) => {
-        if (vigente) setErrorValidacion(err instanceof Error ? err.message : 'No se pudo cargar el usuario.');
-      });
-    return () => { vigente = false; };
-  }, [id]);
-
   // Filtrado de roles según permisos del usuario autenticado
   const rolesDisponibles = catalogos?.roles.filter((rol) => {
     const nombre = rol.nombreRol.toUpperCase();
     return esSuperUsuario || nombre === 'USUARIO' || nombre === 'USUARIO_ESTANDAR';
   }) ?? [];
 
-  // Filtrado de facultades según permisos
-  const facultadesDisponibles = catalogos?.facultades.filter((facultad) =>
-    esSuperUsuario || facultad.idFacultad === user.facultadId
-  ) ?? [];
+  const validarCamposFormulario = (): boolean => {
+    if (!nombreCompleto.trim()) {
+      setErrorValidacion('Debes ingresar el nombre completo.');
+      return false;
+    }
+    if (!correo.trim()) {
+      setErrorValidacion('Debes ingresar el correo electrónico.');
+      return false;
+    }
+    if (!gradoAcademico.trim()) {
+      setErrorValidacion('Debes ingresar el grado académico.');
+      return false;
+    }
+    if (!idRol) {
+      setErrorValidacion('Debes seleccionar un rol de usuario.');
+      return false;
+    }
+    if (!sedeSeleccionada.trim()) {
+      setErrorValidacion('Debes seleccionar una sede.');
+      return false;
+    }
+    if (!idFacultad.trim()) {
+      setErrorValidacion('Debes seleccionar una facultad.');
+      return false;
+    }
+    return true;
+  };
+
+  const abrirModalGenerarContrasena = () => {
+    setErrorValidacion('');
+    if (!validarCamposFormulario()) return;
+    setErrorGenerarContrasena('');
+    setExitoGenerarContrasena(false);
+    setModalGenerarContrasena(true);
+  };
+
+  const cerrarModalGenerarContrasena = () => {
+    if (generandoContrasena) return;
+    setModalGenerarContrasena(false);
+    setErrorGenerarContrasena('');
+    setExitoGenerarContrasena(false);
+  };
+
+  const handleConfirmarGenerarContrasena = async () => {
+    if (!id || !registro) return;
+    setGenerandoContrasena(true);
+    setErrorGenerarContrasena('');
+    setExitoGenerarContrasena(false);
+
+    try {
+      await usuariosApi.actualizar(id, {
+        idRol: Number(idRol),
+        idFacultad: Number(idFacultad),
+        nombreCompleto: nombreCompleto.trim(),
+        gradoAcademico: gradoAcademico.trim(),
+        experienciaEducacionSuperior: experiencia,
+        correo: correo.trim(),
+      });
+
+      if (registro.estadoCuenta === 'activo') {
+        await usuariosApi.solicitarRestablecimientoContrasena(id);
+      } else {
+        await usuariosApi.cambiarEstado(id, true);
+      }
+
+      setExitoGenerarContrasena(true);
+      setMensajeExito(registro.estadoCuenta === 'activo'
+        ? 'Se envió un enlace de un solo uso al correo registrado para que el usuario establezca una contraseña nueva.'
+        : 'Se envió un enlace de activación al correo registrado para que el usuario establezca una contraseña y active su cuenta.');
+      setExito(true);
+    } catch (err) {
+      setErrorGenerarContrasena(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo generar la nueva contraseña ni enviar el enlace.',
+      );
+    } finally {
+      setGenerandoContrasena(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !registro) return;
     setErrorValidacion('');
+    setExito(false);
+
+    if (!validarCamposFormulario()) return;
+
     setGuardando(true);
 
     try {
-      // Validación de contraseña opcional
-      if (password.trim() !== '' && password.length < 8) {
-        setErrorValidacion('La nueva contraseña debe tener al menos 8 caracteres.');
-        setGuardando(false);
-        return;
-      }
-
-      // Actualizar datos principales del usuario
       await usuariosApi.actualizar(id, {
         idRol: Number(idRol),
-        idFacultad: idFacultad ? Number(idFacultad) : null,
+        idFacultad: Number(idFacultad),
         nombreCompleto: nombreCompleto.trim(),
         gradoAcademico: gradoAcademico.trim(),
         experienciaEducacionSuperior: experiencia,
         correo: correo.trim(),
-        ...(password ? { password } : {}),
       });
 
-      // Actualizar estado de cuenta si cambió
-      if (activo !== (registro.estadoCuenta === 'activo')) {
-        await usuariosApi.cambiarEstado(id, activo);
-      }
-
+      setMensajeExito('¡Cambios guardados correctamente en el perfil del usuario!');
       setExito(true);
     } catch (err) {
       setErrorValidacion(err instanceof Error ? err.message : 'No se pudieron guardar los cambios.');
@@ -138,7 +333,7 @@ export const EditarUsuario: React.FC = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200/80 p-8 space-y-6 shadow-sm">
-        
+
         {/* Nombre completo */}
         <div className="space-y-1">
           <label className="text-xs font-bold text-gray-700">Nombre completo *</label>
@@ -194,8 +389,8 @@ export const EditarUsuario: React.FC = () => {
           </div>
         </div>
 
-        {/* ROL y FACULTAD */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* ROL, SEDE y FACULTAD */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-700">Rol de usuario *</label>
             <select
@@ -204,20 +399,43 @@ export const EditarUsuario: React.FC = () => {
               onChange={(e) => setIdRol(e.target.value)}
               className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 font-medium bg-white focus:outline-none focus:border-[#050758] cursor-pointer"
             >
+              <option value="" disabled>Selecciona un rol</option>
               {rolesDisponibles.map((rol) => (
-                <option key={rol.idRol} value={rol.idRol}>{rol.nombreRol}</option>
+                <option key={rol.idRol} value={rol.idRol}>{formatearRol(rol.nombreRol)}</option>
               ))}
             </select>
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-700">Facultad</label>
+            <label className="text-xs font-bold text-gray-700">Sede *</label>
             <select
-              value={idFacultad}
-              onChange={(e) => setIdFacultad(e.target.value)}
+              required
+              value={sedeSeleccionada}
+              onChange={(e) => {
+                setSedeSeleccionada(e.target.value);
+                setIdFacultad('');
+              }}
               className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 font-medium bg-white focus:outline-none focus:border-[#050758] cursor-pointer"
             >
-              <option value="">Sin facultad (Global)</option>
+              <option value="" disabled>Selecciona una sede</option>
+              {sedesDisponibles.map((sede) => (
+                <option key={sede} value={sede}>{sede}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-700">Facultad *</label>
+            <select
+              required
+              disabled={!sedeSeleccionada}
+              value={idFacultad}
+              onChange={(e) => setIdFacultad(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 font-medium bg-white focus:outline-none focus:border-[#050758] cursor-pointer disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
+            >
+              <option value="" disabled>
+                {sedeSeleccionada ? 'Selecciona una facultad' : 'Elige primero una sede'}
+              </option>
               {facultadesDisponibles.map((facultad) => (
                 <option key={facultad.idFacultad} value={facultad.idFacultad}>{facultad.nombreFacultad}</option>
               ))}
@@ -235,48 +453,24 @@ export const EditarUsuario: React.FC = () => {
           </div>
         )}
 
-        {/* Nueva contraseña opcional y Estado de la cuenta */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-700">Nueva contraseña (opcional)</label>
-            <div className="relative flex items-center">
-              <input
-                type={mostrarPassword ? 'text' : 'password'}
-                minLength={8}
-                maxLength={128}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Dejar en blanco para mantener"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-800 focus:outline-none focus:border-[#050758] pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setMostrarPassword(!mostrarPassword)}
-                className="absolute right-3 text-gray-400 hover:text-gray-600 focus:outline-none cursor-pointer"
-                title={mostrarPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
-              >
-                {mostrarPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
+        {/* Generar nueva contraseña */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold text-gray-700">Contraseña del usuario</label>
+          <div>
+            <button
+              type="button"
+              disabled={!registro}
+              onClick={abrirModalGenerarContrasena}
+              className="inline-flex items-center gap-2 border border-gray-300 hover:bg-gray-50 text-gray-800 text-xs font-bold px-4 py-2.5 rounded-xl transition cursor-pointer disabled:opacity-50"
+            >
+              <KeyRound className="w-4 h-4 text-[#050758]" />
+              Generar nueva contraseña
+            </button>
           </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-700">Estado de la cuenta</label>
-            <div className="flex items-center h-[42px] px-4 border border-gray-200 rounded-xl bg-gray-50/50">
-              <label className="flex items-center gap-2 text-xs font-medium text-gray-700 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={activo} 
-                  onChange={(e) => setActivo(e.target.checked)} 
-                  className="rounded text-[#050758] focus:ring-[#050758]"
-                />
-                Cuenta activa
-              </label>
-            </div>
-          </div>
+          <p className="text-[11px] text-gray-400">
+            Envía un enlace de un solo uso al correo del usuario para que establezca una contraseña nueva.
+          </p>
         </div>
-
-        <p className="text-[11px] text-gray-400">Deja la contraseña en blanco para conservar las credenciales actuales.</p>
 
         {/* Errores de validación */}
         {errorValidacion && (
@@ -290,7 +484,7 @@ export const EditarUsuario: React.FC = () => {
         {exito && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <p className="text-xs font-bold">¡Cambios guardados correctamente en el perfil del usuario!</p>
+            <p className="text-xs font-bold">{mensajeExito}</p>
           </div>
         )}
 
@@ -312,6 +506,96 @@ export const EditarUsuario: React.FC = () => {
           </button>
         </div>
       </form>
+
+      {/* Modal de confirmación para generar nueva contraseña */}
+      {modalGenerarContrasena && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              cerrarModalGenerarContrasena();
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="generar-contrasena-titulo"
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl space-y-4"
+          >
+            <div className="flex items-start justify-between">
+              <h3 id="generar-contrasena-titulo" className="text-lg font-bold text-gray-900">
+                {exitoGenerarContrasena
+                  ? registro?.estadoCuenta === 'activo'
+                    ? 'Enlace de cambio de contraseña enviado'
+                    : 'Enlace de activación enviado'
+                  : '¿Enviar enlace para cambiar la contraseña?'}
+              </h3>
+              <button
+                type="button"
+                disabled={generandoContrasena}
+                onClick={cerrarModalGenerarContrasena}
+                className="text-gray-400 hover:text-gray-600 transition cursor-pointer p-1 rounded-lg disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {exitoGenerarContrasena ? (
+              <div className="space-y-3">
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  {registro?.estadoCuenta === 'activo'
+                    ? 'Se envió un enlace para establecer una contraseña nueva a '
+                    : 'Se envió un enlace de activación para establecer una contraseña a '}
+                  <span className="font-semibold text-gray-800">{correo || 'el correo registrado'}</span>, válido por 24 horas.
+                </p>
+                <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                  Correo enviado correctamente.
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-600 leading-relaxed">
+                {registro?.estadoCuenta === 'activo'
+                  ? 'Se enviará un enlace de un solo uso al correo registrado ('
+                  : 'La cuenta está inactiva. Se enviará un enlace de activación al correo registrado ('}
+                <span className="font-semibold text-gray-800">{correo || 'del usuario'}</span>
+                {registro?.estadoCuenta === 'activo'
+                  ? ') para que el usuario establezca una contraseña nueva.'
+                  : ') para que el usuario establezca una contraseña y active su cuenta.'}
+              </p>
+            )}
+
+            {errorGenerarContrasena && (
+              <div role="alert" className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {errorGenerarContrasena}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={generandoContrasena}
+                onClick={cerrarModalGenerarContrasena}
+                className="rounded-xl border border-gray-300 px-4 py-2.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50 cursor-pointer disabled:opacity-50"
+              >
+                {exitoGenerarContrasena ? 'Cerrar' : 'Cancelar'}
+              </button>
+              {!exitoGenerarContrasena && (
+                <button
+                  type="button"
+                  disabled={generandoContrasena}
+                  onClick={handleConfirmarGenerarContrasena}
+                  className="rounded-xl bg-[#050758] hover:bg-[#090c7a] px-4 py-2.5 text-xs font-bold text-white transition cursor-pointer disabled:opacity-50"
+                >
+                  {generandoContrasena ? 'Enviando...' : 'Enviar enlace'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

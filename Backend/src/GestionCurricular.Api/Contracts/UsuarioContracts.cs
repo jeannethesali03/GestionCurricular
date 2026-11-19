@@ -23,8 +23,6 @@ public sealed record CrearUsuarioRequest
     [Required, EmailAddress, StringLength(100)]
     public required string Correo { get; init; }
 
-    [Required, MinLength(8), MaxLength(128)]
-    public required string Password { get; init; }
 }
 
 /// <summary>Datos modificables por un administrador para una cuenta.</summary>
@@ -139,6 +137,50 @@ public sealed record IniciarSesionRequest
 
     [Required, MaxLength(128)]
     public required string Password { get; init; }
+}
+
+/// <summary>Token de invitación y contraseña elegida para activar una cuenta.</summary>
+public sealed record ActivarCuentaRequest
+{
+    [Required, MinLength(64), MaxLength(64)]
+    public required string Token { get; init; }
+
+    [Required, MinLength(8), MaxLength(128)]
+    public required string NuevaContrasena { get; init; }
+}
+
+/// <summary>Token de restablecimiento y nueva contraseña elegida por el usuario.</summary>
+public sealed record RestablecerContrasenaRequest
+{
+    [Required, MinLength(64), MaxLength(64)]
+    public required string Token { get; init; }
+
+    [Required, MinLength(8), MaxLength(128)]
+    public required string NuevaContrasena { get; init; }
+}
+
+/// <summary>Solicita un código para confirmar una desactivación universitaria.</summary>
+public sealed record SolicitarCodigoDesactivacionRequest
+{
+    [Range(1, int.MaxValue)]
+    public int IdUsuario { get; init; }
+}
+
+/// <summary>Identifica al superusuario que solicita la reactivación de una entidad.</summary>
+public sealed record ActivarEntidadUniversitariaRequest
+{
+    [Range(1, int.MaxValue)]
+    public int IdUsuario { get; init; }
+}
+
+/// <summary>Confirma una desactivación universitaria mediante el código enviado por correo.</summary>
+public sealed record ConfirmarDesactivacionRequest
+{
+    [Range(1, int.MaxValue)]
+    public int IdUsuario { get; init; }
+
+    [Required, RegularExpression("^[0-9]{6}$")]
+    public required string Codigo { get; init; }
 }
 
 /// <summary>Usuario autenticado para inicializar la sesión del cliente.</summary>

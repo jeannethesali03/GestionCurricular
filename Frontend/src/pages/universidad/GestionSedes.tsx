@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -12,6 +12,7 @@ import {
   Phone,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { universidadApi, type SedeApi } from '../../services/universidadApi';
 
 export interface SedeItem {
   id: string;
@@ -21,6 +22,14 @@ export interface SedeItem {
   estado: 'Activa' | 'Inactiva';
 }
 
+const convertirSede = (sede: SedeApi): SedeItem => ({
+  id: String(sede.idSede),
+  nombre: sede.nombreSede,
+  direccion: sede.direccion ?? '',
+  telefono: sede.telefono ?? '',
+  estado: sede.estado === 'activo' ? 'Activa' : 'Inactiva',
+});
+
 export const GestionSedes: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -28,52 +37,30 @@ export const GestionSedes: React.FC = () => {
   const rolActual = (user?.rol as string) || '';
   const esSuperUsuario = rolActual === 'SUPER_USUARIO';
 
-  // Si no es superusuario, muestra la pantalla limpia de Página no encontrada (404)
-  if (!user || !esSuperUsuario) {
-    return (
-      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
-        <p className="text-6xl font-extrabold text-[#050758]">404</p>
-        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
-        <p className="text-xs text-gray-500 max-w-md mx-auto">
-          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
-        </p>
-        <div className="pt-4">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
-          >
-            Regresar al inicio
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const [sedes, setSedes] = useState<SedeItem[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
 
-  // Lista simulada inicial de sedes
-  const [sedes, setSedes] = useState<SedeItem[]>([
-    {
-      id: '1',
-      nombre: 'Campus Central Santa Ana',
-      direccion: 'Final Av. Independencia Sur, Santa Ana',
-      telefono: '2440-0000',
-      estado: 'Activa',
-    },
-    {
-      id: '2',
-      nombre: 'Sede Regional Chalchuapa',
-      direccion: 'Km. 78 Carretera a Ahuachapán, Chalchuapa',
-      telefono: '2444-1234',
-      estado: 'Activa',
-    },
-    {
-      id: '3',
-      nombre: 'Centro de Extensión Metapán',
-      direccion: 'Barrio San Pedro, Metapán',
-      telefono: '2448-5678',
-      estado: 'Inactiva',
-    },
-  ]);
+  const cargarSedes = useCallback(async () => {
+    if (!esSuperUsuario) return;
+    try {
+      const resultado = await universidadApi.listarSedes(true);
+      setSedes(resultado.map(convertirSede));
+      setError('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudieron cargar las sedes.');
+    } finally {
+      setCargando(false);
+    }
+  }, [esSuperUsuario]);
+
+  useEffect(() => {
+    const cargarAlIniciar = async () => {
+      await cargarSedes();
+    };
+    void cargarAlIniciar();
+  }, [cargarSedes]);
 
   // Estados de filtros
   const [busqueda, setBusqueda] = useState('');
@@ -93,25 +80,45 @@ export const GestionSedes: React.FC = () => {
 
   // Estado del Modal de Desactivación / Reactivación
   const [sedeEstadoModal, setSedeEstadoModal] = useState<SedeItem | null>(null);
+  const [codigoEnviado, setCodigoEnviado] = useState(false);
+  const [codigoConfirmacion, setCodigoConfirmacion] = useState('');
+
+  const abrirModalEstado = (sede: SedeItem) => {
+    setSedeEstadoModal(sede);
+    setCodigoEnviado(false);
+    setCodigoConfirmacion('');
+    setError('');
+  };
+
+  const cerrarModalEstado = () => {
+    setSedeEstadoModal(null);
+    setCodigoEnviado(false);
+    setCodigoConfirmacion('');
+  };
 
   // Crear nueva sede
-  const handleCrearSede = (e: React.FormEvent) => {
+  const handleCrearSede = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nuevoNombre.trim() || !nuevaDireccion.trim()) return;
 
-    const nuevaSedeObj: SedeItem = {
-      id: Date.now().toString(),
-      nombre: nuevoNombre.trim(),
-      direccion: nuevaDireccion.trim(),
-      telefono: nuevoTelefono.trim() || 'No especificado',
-      estado: 'Activa',
-    };
-
-    setSedes([nuevaSedeObj, ...sedes]);
-    setNuevoNombre('');
-    setNuevaDireccion('');
-    setNuevoTelefono('');
-    setModalCrearAbierto(false);
+    setGuardando(true);
+    setError('');
+    try {
+      await universidadApi.crearSede({
+        nombreSede: nuevoNombre.trim(),
+        direccion: nuevaDireccion.trim(),
+        telefono: nuevoTelefono.trim(),
+      });
+      await cargarSedes();
+      setNuevoNombre('');
+      setNuevaDireccion('');
+      setNuevoTelefono('');
+      setModalCrearAbierto(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo guardar la sede.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   // Abrir modal de edición precargando datos
@@ -123,37 +130,65 @@ export const GestionSedes: React.FC = () => {
   };
 
   // Guardar cambios de edición
-  const handleGuardarEdicion = (e: React.FormEvent) => {
+  const handleGuardarEdicion = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sedeEditando || !editNombre.trim()) return;
 
-    setSedes(
-      sedes.map((s) =>
-        s.id === sedeEditando.id
-          ? {
-              ...s,
-              nombre: editNombre.trim(),
-              direccion: editDireccion.trim(),
-              telefono: editTelefono.trim(),
-            }
-          : s
-      )
-    );
-    setSedeEditando(null);
+    setGuardando(true);
+    setError('');
+    try {
+      await universidadApi.actualizarSede(Number(sedeEditando.id), {
+        nombreSede: editNombre.trim(),
+        direccion: editDireccion.trim(),
+        telefono: editTelefono.trim(),
+      });
+      await cargarSedes();
+      setSedeEditando(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo actualizar la sede.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
-  // Confirmar cambio de estado
-  const handleConfirmarCambioEstado = () => {
-    if (!sedeEstadoModal) return;
+  const handleEnviarCodigo = async () => {
+    if (!sedeEstadoModal || !user) return;
+    setGuardando(true);
+    setError('');
+    try {
+      await universidadApi.solicitarCodigo('sede', Number(sedeEstadoModal.id), Number(user.id));
+      setCodigoEnviado(true);
+    } catch (e) {
+      const mensaje = e instanceof Error ? e.message : 'No se pudo enviar el código.';
+      if (mensaje.includes('Ya se envió un código')) setCodigoEnviado(true);
+      setError(mensaje);
+    } finally {
+      setGuardando(false);
+    }
+  };
 
-    setSedes(
-      sedes.map((s) =>
-        s.id === sedeEstadoModal.id
-          ? { ...s, estado: s.estado === 'Activa' ? 'Inactiva' : 'Activa' }
-          : s
-      )
-    );
-    setSedeEstadoModal(null);
+  const handleConfirmarCambioEstado = async () => {
+    if (!sedeEstadoModal || !user) return;
+    setGuardando(true);
+    setError('');
+    try {
+      if (sedeEstadoModal.estado === 'Activa') {
+        await universidadApi.desactivar(
+          'sede',
+          Number(sedeEstadoModal.id),
+          Number(user.id),
+          codigoConfirmacion,
+        );
+      } else {
+        await universidadApi.activar('sede', Number(sedeEstadoModal.id), Number(user.id));
+      }
+      await cargarSedes();
+      cerrarModalEstado();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo cambiar el estado de la sede.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   // Limpiar filtros
@@ -185,8 +220,34 @@ export const GestionSedes: React.FC = () => {
 
   const totalActivas = sedes.filter((s) => s.estado === 'Activa').length;
 
+  if (!user || !esSuperUsuario) {
+    return (
+      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
+        <p className="text-6xl font-extrabold text-[#050758]">404</p>
+        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
+        <p className="text-xs text-gray-500 max-w-md mx-auto">
+          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
+        </p>
+        <div className="pt-4">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
+          >
+            Regresar al inicio
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 relative">
+      {error && (
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+          {error}
+        </p>
+      )}
       {/* Encabezado Superior */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
@@ -288,7 +349,11 @@ export const GestionSedes: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-xs">
-              {sedesFiltradas.length === 0 ? (
+              {cargando ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-gray-400">Cargando sedes...</td>
+                </tr>
+              ) : sedesFiltradas.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-gray-400">
                     No se encontraron sedes con los filtros aplicados.
@@ -312,8 +377,8 @@ export const GestionSedes: React.FC = () => {
                         {item.nombre}
                       </span>
                     </td>
-                    <td className="py-4 px-4 text-gray-600">{item.direccion}</td>
-                    <td className="py-4 px-4 text-gray-600 font-medium">{item.telefono}</td>
+                    <td className="py-4 px-4 text-gray-600">{item.direccion || 'No especificada'}</td>
+                    <td className="py-4 px-4 text-gray-600 font-medium">{item.telefono || 'No especificado'}</td>
                     <td className="py-4 px-4">
                       {item.estado === 'Activa' ? (
                         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
@@ -339,7 +404,7 @@ export const GestionSedes: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setSedeEstadoModal(item)}
+                          onClick={() => abrirModalEstado(item)}
                           title={item.estado === 'Activa' ? 'Desactivar sede' : 'Reactivar sede'}
                           className={`transition cursor-pointer p-1 ${
                             item.estado === 'Activa'
@@ -384,6 +449,7 @@ export const GestionSedes: React.FC = () => {
             </div>
 
             <form onSubmit={handleCrearSede} className="space-y-4">
+              {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-gray-700">
                   Nombre de la sede <span className="text-red-500">*</span>
@@ -438,6 +504,7 @@ export const GestionSedes: React.FC = () => {
                 </button>
                 <button
                   type="submit"
+                  disabled={guardando}
                   className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-sm transition cursor-pointer"
                 >
                   Guardar sede
@@ -469,6 +536,7 @@ export const GestionSedes: React.FC = () => {
             </div>
 
             <form onSubmit={handleGuardarEdicion} className="space-y-4">
+              {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-gray-700">
                   Nombre de la sede <span className="text-red-500">*</span>
@@ -520,6 +588,7 @@ export const GestionSedes: React.FC = () => {
                 </button>
                 <button
                   type="submit"
+                  disabled={guardando}
                   className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-sm transition cursor-pointer"
                 >
                   Guardar cambios
@@ -562,7 +631,7 @@ export const GestionSedes: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setSedeEstadoModal(null)}
+                onClick={cerrarModalEstado}
                 className="text-gray-400 hover:text-gray-600 transition cursor-pointer p-1 rounded-lg"
               >
                 <X className="w-5 h-5" />
@@ -576,21 +645,54 @@ export const GestionSedes: React.FC = () => {
 
             <p className="text-xs text-gray-600 leading-relaxed">
               {sedeEstadoModal.estado === 'Activa'
-                ? 'Al desactivar esta sede, dejará de figurar en las operaciones activas de la red institucional y pasará al final del listado.'
-                : 'Al reactivar esta sede, volverá a estar disponible plenamente dentro del sistema universitario.'}
+                ? 'Al desactivar esta sede, también se desactivarán sus facultades, carreras, planes de estudio, asignaturas y usuarios asignados a sus facultades. Se enviará un código de confirmación al correo del superusuario.'
+                : 'Al reactivar esta sede, sus facultades, carreras, planes, asignaturas y usuarios seguirán inactivos. Deberás activarlos manualmente, uno por uno, comenzando por las facultades.'}
             </p>
+
+            {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+
+            {sedeEstadoModal.estado === 'Activa' && codigoEnviado && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-gray-700">
+                  Código de confirmación (6 dígitos)
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  pattern="[0-9]{6}"
+                  value={codigoConfirmacion}
+                  onChange={(e) => {
+                    setCodigoConfirmacion(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    setError('');
+                  }}
+                  placeholder="000000"
+                  className="w-full bg-white border border-gray-200 focus:border-[#050758] rounded-xl px-4 py-3 text-xs text-gray-800 font-medium tracking-widest focus:outline-none transition"
+                />
+                <p className="text-[11px] text-gray-500">El código vence en 10 minutos y solo puede utilizarse una vez.</p>
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
               <button
                 type="button"
-                onClick={() => setSedeEstadoModal(null)}
+                onClick={cerrarModalEstado}
                 className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-bold px-5 py-2.5 rounded-xl transition cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                onClick={handleConfirmarCambioEstado}
+                onClick={
+                  sedeEstadoModal.estado === 'Activa' && !codigoEnviado
+                    ? handleEnviarCodigo
+                    : handleConfirmarCambioEstado
+                }
+                disabled={
+                  guardando
+                  || (sedeEstadoModal.estado === 'Activa' && codigoEnviado && codigoConfirmacion.length !== 6)
+                }
                 className={`text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-sm transition cursor-pointer ${
                   sedeEstadoModal.estado === 'Activa'
                     ? 'bg-red-600 hover:bg-red-700'
@@ -598,7 +700,7 @@ export const GestionSedes: React.FC = () => {
                 }`}
               >
                 {sedeEstadoModal.estado === 'Activa'
-                  ? 'Sí, desactivar'
+                  ? codigoEnviado ? 'Confirmar desactivación' : 'Enviar código'
                   : 'Sí, reactivar'}
               </button>
             </div>

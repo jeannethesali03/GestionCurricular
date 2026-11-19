@@ -6,11 +6,19 @@ public sealed class SedeRequest
 {
     [Required, StringLength(200)]
     public string NombreSede { get; set; } = null!;
+
+    [StringLength(255)]
+    public string? Direccion { get; set; }
+
+    [StringLength(30)]
+    public string? Telefono { get; set; }
 }
 
 public sealed record SedeResponse(
     int IdSede,
     string NombreSede,
+    string? Direccion,
+    string? Telefono,
     string Estado,
     IReadOnlyList<FacultadResumenResponse> Facultades);
 
@@ -21,6 +29,9 @@ public sealed class FacultadRequest
 
     [Required, StringLength(200)]
     public string NombreFacultad { get; set; } = null!;
+
+    [StringLength(150)]
+    public string? Decano { get; set; }
 
     [StringLength(200)]
     public string? DescripcionFacultad { get; set; }
@@ -37,6 +48,7 @@ public sealed record FacultadResponse(
     int IdSede,
     string? NombreSede,
     string NombreFacultad,
+    string? Decano,
     string? DescripcionFacultad,
     string Estado,
     IReadOnlyList<CarreraResumenResponse> Carreras,
