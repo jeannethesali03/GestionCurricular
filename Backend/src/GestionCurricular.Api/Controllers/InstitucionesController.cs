@@ -279,7 +279,6 @@ public sealed class FacultadesController(GestionCurricularDbContext db) : Contro
                 .OrderBy(usuario => usuario.IdUsuario)
                 .Select(usuario => new UsuarioFacultadResponse(
                     usuario.IdUsuario,
-                    usuario.NombreUsuario,
                     usuario.NombreCompleto,
                     usuario.Correo,
                     "activo"))

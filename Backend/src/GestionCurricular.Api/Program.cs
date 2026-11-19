@@ -1,5 +1,7 @@
 using GestionCurricular.Domain.Entities;
 using GestionCurricular.Infrastructure.Persistence;
+using GestionCurricular.Api.Middleware;
+using GestionCurricular.Api.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,6 +22,9 @@ builder.Services.AddCors(options =>
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddScoped<IPasswordHasher<Usuario>, PasswordHasher<Usuario>>();
+builder.Services.AddScoped<IUsuariosService, UsuariosService>();
+builder.Services.AddExceptionHandler<UsuarioServiceExceptionHandler>();
+builder.Services.AddProblemDetails();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
@@ -33,7 +38,11 @@ builder.Services.AddDbContext<GestionCurricularDbContext>(
 
 var app = builder.Build();
 
+await InicializadorRoles.InicializarAsync(app.Services);
+
 // Configure the HTTP request pipeline.
+app.UseExceptionHandler();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();

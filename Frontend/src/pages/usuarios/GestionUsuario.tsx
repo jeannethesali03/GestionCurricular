@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, UserPlus, Edit3, Trash2, Eye } from 'lucide-react';
+import { Search, UserPlus, Edit3, Trash2, Eye, RotateCcw, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { usuariosApi, type Usuario } from '../../services/usuariosApi';
 
 export interface UsuarioItem {
   id: string;
@@ -9,7 +10,7 @@ export interface UsuarioItem {
   apellidos: string;
   email: string;
   facultad: string;
-  rol: 'Usuario Estándar';
+  rol: string;
   estado: 'Activo' | 'Inactivo';
 }
 
@@ -21,64 +22,39 @@ export const GestionUsuario: React.FC = () => {
   const esSuperUsuario = rolActual === 'SUPER_USUARIO';
   const esAdministrador = rolActual === 'ADMINISTRADOR';
 
-  // Si es un usuario estándar, muestra la pantalla limpia de Página no encontrada (404)
-  if (!user || (!esSuperUsuario && !esAdministrador)) {
-    return (
-      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
-        <p className="text-6xl font-extrabold text-[#050758]">404</p>
-        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
-        <p className="text-xs text-gray-500 max-w-md mx-auto">
-          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
-        </p>
-        <div className="pt-4">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
-          >
-            Regresar al inicio
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Lista simulada de usuarios
-  const [usuarios] = useState<UsuarioItem[]>([
-    {
-      id: '1',
-      nombres: 'Lucía',
-      apellidos: 'Méndez',
-      email: 'lucia.mendez@catolica.edu.sv',
-      facultad: 'Ingeniería y Tecnología',
-      rol: 'Usuario Estándar',
-      estado: 'Activo',
-    },
-    {
-      id: '2',
-      nombres: 'Diego',
-      apellidos: 'Torres',
-      email: 'diego.torres@catolica.edu.sv',
-      facultad: 'Ingeniería y Tecnología',
-      rol: 'Usuario Estándar',
-      estado: 'Activo',
-    },
-    {
-      id: '3',
-      nombres: 'Ana',
-      apellidos: 'Beltrán',
-      email: 'ana.beltran@catolica.edu.sv',
-      facultad: 'Ciencias Económicas',
-      rol: 'Usuario Estándar',
-      estado: 'Inactivo',
-    },
-  ]);
+  // Estados funcionales reales conectados a la API
+  const [usuarios, setUsuarios] = useState<UsuarioItem[]>([]);
+  const [facultades, setFacultades] = useState<string[]>([]);
+  const [error, setError] = useState('');
+  const [cargando, setCargando] = useState(true);
+  const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<UsuarioItem | null>(null);
+  const [guardandoEstado, setGuardandoEstado] = useState(false);
+  const [errorEstado, setErrorEstado] = useState('');
 
   const [busqueda, setBusqueda] = useState('');
-  const [facultadFiltro, setFacultadFiltro] = useState(
-    esSuperUsuario ? 'Todas' : (user?.facultadNombre || 'Ingeniería y Tecnología')
-  );
+  const [facultadFiltro, setFacultadFiltro] = useState('Todas');
   const [estadoFiltro, setEstadoFiltro] = useState('Todos');
+
+  // Cargar usuarios y catálogos al montar el componente
+  useEffect(() => {
+    if (!user || (!esSuperUsuario && !esAdministrador)) return;
+
+    let vigente = true;
+    Promise.all([usuariosApi.listar(true), usuariosApi.catalogos()])
+      .then(([resultado, catalogos]) => {
+        if (!vigente) return;
+        setUsuarios(resultado.map(mapearUsuario));
+        setFacultades(catalogos.facultades.map((facultad) => facultad.nombreFacultad));
+        setError('');
+      })
+      .catch((err: unknown) => {
+        if (vigente) setError(err instanceof Error ? err.message : 'No se pudieron cargar los usuarios.');
+      })
+      .finally(() => {
+        if (vigente) setCargando(false);
+      });
+    return () => { vigente = false; };
+  }, [user, esSuperUsuario, esAdministrador]);
 
   // Filtrado y ordenamiento automático: Activos primero, Inactivos al final
   const usuariosFiltrados = useMemo(() => {
@@ -114,6 +90,51 @@ export const GestionUsuario: React.FC = () => {
 
   const totalActivos = usuarios.filter((u) => u.estado === 'Activo').length;
 
+  const handleCambiarEstado = async () => {
+    if (!usuarioSeleccionado) return;
+
+    const activar = usuarioSeleccionado.estado === 'Inactivo';
+    setGuardandoEstado(true);
+    setErrorEstado('');
+    try {
+      await usuariosApi.cambiarEstado(usuarioSeleccionado.id, activar);
+      setUsuarios((actuales) =>
+        actuales.map((usuario) =>
+          usuario.id === usuarioSeleccionado.id
+            ? { ...usuario, estado: activar ? 'Activo' : 'Inactivo' }
+            : usuario,
+        ),
+      );
+      setUsuarioSeleccionado(null);
+    } catch (err) {
+      setErrorEstado(err instanceof Error ? err.message : 'No se pudo cambiar el estado del usuario.');
+    } finally {
+      setGuardandoEstado(false);
+    }
+  };
+
+  // Si es un usuario estándar (o no autenticado), muestra la pantalla limpia de Página no encontrada (404)
+  if (!user || (!esSuperUsuario && !esAdministrador)) {
+    return (
+      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
+        <p className="text-6xl font-extrabold text-[#050758]">404</p>
+        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
+        <p className="text-xs text-gray-500 max-w-md mx-auto">
+          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
+        </p>
+        <div className="pt-4">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
+          >
+            Regresar al inicio
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Encabezado Superior */}
@@ -124,8 +145,8 @@ export const GestionUsuario: React.FC = () => {
           </h2>
           <p className="text-sm text-gray-500 mt-1">
             {esSuperUsuario
-              ? 'Administra los Usuarios Estándar de todas las facultades del sistema.'
-              : `Crea y administra únicamente Usuarios Estándar de ${user.facultadNombre || 'Ingeniería y Tecnología'}.`}
+              ? 'Administra los usuarios del sistema de todas las facultades.'
+              : `Crea y administra únicamente usuarios de ${user.facultadNombre || 'tu facultad'}.`}
           </p>
         </div>
 
@@ -159,6 +180,13 @@ export const GestionUsuario: React.FC = () => {
         </div>
       </div>
 
+      {/* Mensaje de error si falla la API */}
+      {error && (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs font-bold text-red-700">
+          {error}
+        </div>
+      )}
+
       {/* Tarjeta Principal de Directorio */}
       <div className="bg-white rounded-2xl border border-gray-200/80 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.02)] space-y-5">
         <div>
@@ -178,8 +206,8 @@ export const GestionUsuario: React.FC = () => {
                 type="text"
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Nombre, segundo nombre, apellido o correo"
-                className="w-full text-xs text-gray-800 placeholder-gray-400 focus:outline-none"
+                placeholder="Nombre, apellido o correo institucional"
+                className="w-full text-xs text-gray-800 placeholder-gray-400 focus:outline-none bg-transparent"
               />
             </div>
           </div>
@@ -193,12 +221,13 @@ export const GestionUsuario: React.FC = () => {
                 className="w-full text-xs font-medium text-gray-800 bg-transparent mt-0.5 focus:outline-none cursor-pointer"
               >
                 <option value="Todas">Todas las facultades</option>
-                <option value="Ingeniería y Tecnología">Ingeniería y Tecnología</option>
-                <option value="Ciencias Económicas">Ciencias Económicas</option>
+                {facultades.map((fac) => (
+                  <option key={fac} value={fac}>{fac}</option>
+                ))}
               </select>
             ) : (
               <span className="text-xs font-medium text-gray-800 mt-0.5 truncate">
-                {user.facultadNombre || 'Ingeniería y Tecnología'}
+                {user.facultadNombre || 'Sin facultad asignada'}
               </span>
             )}
           </div>
@@ -230,17 +259,23 @@ export const GestionUsuario: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-xs">
-              {usuariosFiltrados.length === 0 ? (
+              {cargando ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-gray-400">
-                    No se encontraron usuarios.
+                    Cargando usuarios del sistema...
+                  </td>
+                </tr>
+              ) : usuariosFiltrados.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-gray-400">
+                    No se encontraron usuarios registrados.
                   </td>
                 </tr>
               ) : (
                 usuariosFiltrados.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50/70 transition">
                     <td className="py-4 px-5">
-                      <p className="font-bold text-gray-900">{item.nombres} {item.apellidos}</p>
+                      <p className="font-bold text-gray-900">{item.nombres}</p>
                       <p className="text-[11px] text-gray-500 mt-0.5">{item.email}</p>
                     </td>
                     <td className="py-4 px-4 text-gray-600">{item.facultad}</td>
@@ -278,11 +313,17 @@ export const GestionUsuario: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => navigate(`/usuarios/desactivar/${item.id}`)}
-                          title="Desactivar usuario"
-                          className="text-red-500 hover:text-red-700 transition cursor-pointer p-1"
+                          onClick={() => {
+                            setErrorEstado('');
+                            setUsuarioSeleccionado(item);
+                          }}
+                          title={item.estado === 'Activo' ? 'Desactivar usuario' : 'Activar usuario'}
+                          aria-label={item.estado === 'Activo' ? 'Desactivar usuario' : 'Activar usuario'}
+                          className={`${item.estado === 'Activo' ? 'text-red-500 hover:text-red-700' : 'text-emerald-600 hover:text-emerald-800'} transition cursor-pointer p-1`}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {item.estado === 'Activo'
+                            ? <Trash2 className="w-4 h-4" />
+                            : <RotateCcw className="w-4 h-4" />}
                         </button>
                       </div>
                     </td>
@@ -293,6 +334,85 @@ export const GestionUsuario: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {usuarioSeleccionado && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !guardandoEstado) {
+              setUsuarioSeleccionado(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cambiar-estado-titulo"
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+          >
+            <h3 id="cambiar-estado-titulo" className="text-lg font-bold text-gray-900">
+              {usuarioSeleccionado.estado === 'Activo' ? 'Desactivar usuario' : 'Activar usuario'}
+            </h3>
+            <p className="mt-2 text-sm text-gray-600">
+              {usuarioSeleccionado.estado === 'Activo'
+                ? `¿Deseas desactivar a ${usuarioSeleccionado.nombres}? Se conservarán sus datos e historial.`
+                : `¿Deseas volver a activar a ${usuarioSeleccionado.nombres}? Podrá iniciar sesión nuevamente.`}
+            </p>
+            {errorEstado && (
+              <div role="alert" className="mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {errorEstado}
+              </div>
+            )}
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={guardandoEstado}
+                onClick={() => setUsuarioSeleccionado(null)}
+                className="rounded-xl border border-gray-300 px-4 py-2.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={guardandoEstado}
+                onClick={handleCambiarEstado}
+                className={`rounded-xl px-4 py-2.5 text-xs font-bold text-white transition disabled:opacity-50 ${
+                  usuarioSeleccionado.estado === 'Activo'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+              >
+                {guardandoEstado
+                  ? 'Guardando...'
+                  : usuarioSeleccionado.estado === 'Activo'
+                    ? 'Desactivar'
+                    : 'Activar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+// Función auxiliar para mapear datos del backend al formato de la interfaz
+function mapearUsuario(usuario: Usuario): UsuarioItem {
+  const nombreRol = usuario.nombreRol?.toUpperCase();
+  const rol = nombreRol === 'SUPER_USUARIO' || nombreRol === 'SUPERUSUARIO'
+    ? 'Superusuario'
+    : nombreRol === 'ADMINISTRADOR'
+      ? 'Administrador'
+      : 'Usuario Estándar';
+      
+  return {
+    id: String(usuario.idUsuario),
+    nombres: usuario.nombreCompleto,
+    apellidos: '',
+    email: usuario.correo,
+    facultad: usuario.nombreFacultad ?? 'Sin facultad',
+    rol,
+    estado: usuario.estadoCuenta === 'activo' ? 'Activo' : 'Inactivo',
+  };
+}

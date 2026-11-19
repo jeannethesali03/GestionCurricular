@@ -29,10 +29,6 @@ public class Usuario
     [Column("id_facultad")]
     public int? IdFacultad { get; set; }
 
-    [Required, MaxLength(50)]
-    [Column("usuario")]
-    public string NombreUsuario { get; set; } = null!;
-
     [Required, MaxLength(150)]
     [Column("nombre_completo")]
     public string NombreCompleto { get; set; } = null!;

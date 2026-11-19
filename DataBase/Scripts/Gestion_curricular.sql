@@ -114,7 +114,6 @@ CREATE TABLE Usuarios (
     id_usuario INT AUTO_INCREMENT NOT NULL,
     id_rol INT NOT NULL,
     id_facultad INT NULL,
-    usuario VARCHAR(50) NOT NULL UNIQUE,
     nombre_completo VARCHAR(150) NOT NULL,
     grado_academico VARCHAR(150) NOT NULL,
     experiencia_educacion_superior INT NOT NULL,
