@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Info, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { universidadApi } from '../../services/universidadApi';
 
 export const CrearPlanEstudio: React.FC = () => {
   const { user } = useAuth();
@@ -10,28 +11,6 @@ export const CrearPlanEstudio: React.FC = () => {
   const rolActual = (user?.rol as string) || '';
   const esSuperUsuario = rolActual === 'SUPER_USUARIO';
   const esAdministrador = rolActual === 'ADMINISTRADOR';
-
-  // Si es un usuario estándar (o no autenticado), muestra la pantalla limpia de Página no encontrada (404)
-  if (!user || (!esSuperUsuario && !esAdministrador)) {
-    return (
-      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
-        <p className="text-6xl font-extrabold text-[#050758]">404</p>
-        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
-        <p className="text-xs text-gray-500 max-w-md mx-auto">
-          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
-        </p>
-        <div className="pt-4">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
-          >
-            Regresar al inicio
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // Estados del formulario para el nuevo plan
   const [nombreCarrera, setNombreCarrera] = useState('');
@@ -45,18 +24,56 @@ export const CrearPlanEstudio: React.FC = () => {
   
   // Superusuario puede elegir facultad; el admin tiene fija la suya
   const [facultadSeleccionada, setFacultadSeleccionada] = useState(
-    user.facultadNombre || 'Ingeniería y Tecnología'
+    user?.facultadNombre || 'Ingeniería y Tecnología'
   );
 
-  const facultadesDisponibles = [
-    'Ingeniería y Tecnología',
-    'Ciencias Económicas',
-    'Jurisprudencia y Ciencias Sociales',
-    'Ciencias de la Salud',
-    'Humanidades',
-  ];
+  const [facultadesDisponibles, setFacultadesDisponibles] = useState<string[]>([]);
+  const [errorFacultades, setErrorFacultades] = useState('');
 
   const [guardadoExitoso, setGuardadoExitoso] = useState(false);
+
+  useEffect(() => {
+    if (!user || (!esSuperUsuario && !esAdministrador)) return;
+
+    let vigente = true;
+    universidadApi.listarFacultades()
+      .then((facultades) => {
+        if (!vigente) return;
+        const nombres = facultades.map((facultad) => facultad.nombreFacultad);
+        setFacultadesDisponibles(nombres);
+        setFacultadSeleccionada((actual) =>
+          actual && nombres.includes(actual) ? actual : nombres[0] ?? '',
+        );
+      })
+      .catch((error: unknown) => {
+        if (vigente) {
+          setErrorFacultades(error instanceof Error ? error.message : 'No se pudieron cargar las facultades.');
+        }
+      });
+    return () => { vigente = false; };
+  }, [user, esSuperUsuario, esAdministrador]);
+
+  // Si es un usuario estándar (o no autenticado), muestra la pantalla limpia de Página no encontrada (404)
+  if (!user || (!esSuperUsuario && !esAdministrador)) {
+      return (
+        <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
+          <p className="text-6xl font-extrabold text-[#050758]">404</p>
+          <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
+          <p className="text-xs text-gray-500 max-w-md mx-auto">
+            La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
+          </p>
+          <div className="pt-4">
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
+            >
+              Regresar al inicio
+            </button>
+          </div>
+        </div>
+      );
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,10 +150,13 @@ export const CrearPlanEstudio: React.FC = () => {
                 </label>
                 {esSuperUsuario ? (
                   <select
+                    required
+                    disabled={facultadesDisponibles.length === 0}
                     value={facultadSeleccionada}
                     onChange={(e) => setFacultadSeleccionada(e.target.value)}
                     className="w-full bg-white border border-gray-200 focus:border-[#050758] rounded-xl px-4 py-3 text-xs text-gray-800 font-medium focus:outline-none transition cursor-pointer"
                   >
+                    <option value="" disabled>Selecciona una facultad</option>
                     {facultadesDisponibles.map((fac) => (
                       <option key={fac} value={fac}>{fac}</option>
                     ))}
@@ -148,6 +168,9 @@ export const CrearPlanEstudio: React.FC = () => {
                     value={user.facultadNombre || 'Ingeniería y Tecnología'}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-500 font-medium cursor-not-allowed"
                   />
+                )}
+                {errorFacultades && (
+                  <p role="alert" className="text-xs text-red-600">{errorFacultades}</p>
                 )}
               </div>
             </div>

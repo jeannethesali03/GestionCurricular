@@ -23,6 +23,8 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers();
 builder.Services.AddScoped<IPasswordHasher<Usuario>, PasswordHasher<Usuario>>();
 builder.Services.AddScoped<IUsuariosService, UsuariosService>();
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+builder.Services.AddScoped<IDesactivacionesUniversidadService, DesactivacionesUniversidadService>();
 builder.Services.AddExceptionHandler<UsuarioServiceExceptionHandler>();
 builder.Services.AddProblemDetails();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

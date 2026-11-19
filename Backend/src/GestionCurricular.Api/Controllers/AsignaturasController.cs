@@ -175,7 +175,12 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         if (!incluirInactivas)
         {
             query = query.Where(asignatura =>
-                asignatura.EstadoAsignatura == EstadoAsignatura.Activo);
+                asignatura.EstadoAsignatura == EstadoAsignatura.Activo
+                && (!asignatura.Carreras.Any()
+                    || asignatura.Carreras.Any(relacion =>
+                        relacion.Carrera.EstadoRegistro == EstadoRegistro.Activo
+                        && relacion.Carrera.Facultad.EstadoRegistro == EstadoRegistro.Activo
+                        && relacion.Carrera.Facultad.Sede.EstadoRegistro == EstadoRegistro.Activo)));
         }
 
         var asignaturas = await query
@@ -324,6 +329,23 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         if (asignatura is null)
         {
             return NotFound();
+        }
+
+        var tieneCarreras = await db.AsignaturasCarrera
+            .AnyAsync(relacion => relacion.IdAsignatura == id, cancellationToken);
+        if (tieneCarreras
+            && !await db.AsignaturasCarrera.AnyAsync(
+                relacion => relacion.IdAsignatura == id
+                    && relacion.Carrera.EstadoRegistro == EstadoRegistro.Activo
+                    && relacion.Carrera.Facultad.EstadoRegistro == EstadoRegistro.Activo
+                    && relacion.Carrera.Facultad.Sede.EstadoRegistro == EstadoRegistro.Activo,
+                cancellationToken))
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "No se puede activar una asignatura hasta que al menos una carrera relacionada esté activa.",
+                Status = StatusCodes.Status409Conflict
+            });
         }
 
         asignatura.EstadoAsignatura = EstadoAsignatura.Activo;

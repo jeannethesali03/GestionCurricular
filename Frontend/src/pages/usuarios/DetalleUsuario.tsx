@@ -30,10 +30,6 @@ export const DetalleUsuario: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams();
 
-  const rolActual = (user?.rol as string) || '';
-  const esSuperUsuario = rolActual === 'SUPER_USUARIO';
-  const esAdministrador = rolActual === 'ADMINISTRADOR';
-
   // Estados funcionales de la API
   const [detalle, setDetalle] = useState<DetalleUsuarioData | null>(null);
   const [error, setError] = useState('');

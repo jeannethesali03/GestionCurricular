@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LoginPage } from '../pages/auth/LoginPage';
+import { ActivarCuenta } from '../pages/auth/ActivarCuenta';
 import { MainLayout } from '../components/MainLayout';
 import { LayoutEdicionPlan } from '../components/layout/LayoutEdicionPlan';
 
@@ -74,6 +75,8 @@ export const AppRouter: React.FC = () => {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/activar-cuenta" element={<ActivarCuenta />} />
+        <Route path="/restablecer-contrasena" element={<ActivarCuenta modo="restablecimiento" />} />
 
         {/* Vistas protegidas dentro del diseño institucional con barra lateral por rol */}
         <Route

@@ -13,7 +13,8 @@ public enum TipoTokenAutenticacion
 {
     Activacion,
     Invitacion,
-    ResetPassword
+    ResetPassword,
+    CodigoDesactivacion
 }
 
 [Table("Usuarios")]
@@ -79,7 +80,7 @@ public class TokenAutenticacion
     [Column("token")]
     public string Token { get; set; } = null!;
 
-    [Column("tipo_token", TypeName = "enum('activacion','invitacion','reset_password')")]
+    [Column("tipo_token", TypeName = "enum('activacion','invitacion','reset_password','codigo_desactivacion')")]
     public TipoTokenAutenticacion TipoToken { get; set; }
 
     [Column("expiracion")]
@@ -87,6 +88,9 @@ public class TokenAutenticacion
 
     [Column("consumido")]
     public bool? Consumido { get; set; }
+
+    [Column("intentos")]
+    public int Intentos { get; set; }
 
     public Usuario Usuario { get; set; } = null!;
 }

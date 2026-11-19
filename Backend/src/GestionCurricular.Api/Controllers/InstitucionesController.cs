@@ -1,4 +1,5 @@
 using GestionCurricular.Api.Contracts;
+using GestionCurricular.Api.Services;
 using GestionCurricular.Domain.Entities;
 using GestionCurricular.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +9,9 @@ namespace GestionCurricular.Api.Controllers;
 
 [ApiController]
 [Route("api/sedes")]
-public sealed class SedesController(GestionCurricularDbContext db) : ControllerBase
+public sealed class SedesController(
+    GestionCurricularDbContext db,
+    IDesactivacionesUniversidadService desactivaciones) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<SedeResponse>>> ObtenerTodas(
@@ -47,6 +50,8 @@ public sealed class SedesController(GestionCurricularDbContext db) : ControllerB
         var sede = new Sede
         {
             NombreSede = request.NombreSede.Trim(),
+            Direccion = request.Direccion?.Trim(),
+            Telefono = request.Telefono?.Trim(),
             EstadoRegistro = EstadoRegistro.Activo
         };
         db.Sedes.Add(sede);
@@ -69,27 +74,44 @@ public sealed class SedesController(GestionCurricularDbContext db) : ControllerB
         if (sede.EstadoRegistro == EstadoRegistro.Inactivo) return EstadoInactivo("sede");
 
         sede.NombreSede = request.NombreSede.Trim();
+        sede.Direccion = request.Direccion?.Trim();
+        sede.Telefono = request.Telefono?.Trim();
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
 
     [HttpDelete("{id:int}")]
-    public Task<IActionResult> Desactivar(int id, CancellationToken cancellationToken) =>
-        CambiarEstadoAsync(id, EstadoRegistro.Inactivo, cancellationToken);
-
-    [HttpPut("{id:int}/activar")]
-    public Task<IActionResult> Activar(int id, CancellationToken cancellationToken) =>
-        CambiarEstadoAsync(id, EstadoRegistro.Activo, cancellationToken);
-
-    private async Task<IActionResult> CambiarEstadoAsync(
+    public async Task<IActionResult> Desactivar(
         int id,
-        EstadoRegistro estado,
+        ConfirmarDesactivacionRequest request,
         CancellationToken cancellationToken)
     {
-        var sede = await db.Sedes.FindAsync([id], cancellationToken);
-        if (sede is null) return NotFound();
-        sede.EstadoRegistro = estado;
-        await db.SaveChangesAsync(cancellationToken);
+        await desactivaciones.DesactivarAsync(
+            "sede",
+            id,
+            request.IdUsuario,
+            request.Codigo,
+            cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("{id:int}/codigo-desactivacion")]
+    public async Task<IActionResult> SolicitarCodigo(
+        int id,
+        SolicitarCodigoDesactivacionRequest request,
+        CancellationToken cancellationToken)
+    {
+        await desactivaciones.SolicitarCodigoAsync("sede", id, request.IdUsuario, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPut("{id:int}/activar")]
+    public async Task<IActionResult> Activar(
+        int id,
+        ActivarEntidadUniversitariaRequest request,
+        CancellationToken cancellationToken)
+    {
+        await desactivaciones.ActivarAsync("sede", id, request.IdUsuario, cancellationToken);
         return NoContent();
     }
 
@@ -97,6 +119,8 @@ public sealed class SedesController(GestionCurricularDbContext db) : ControllerB
         new(
             sede.IdSede,
             sede.NombreSede,
+            sede.Direccion,
+            sede.Telefono,
             sede.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo",
             sede.Facultades
                 .Where(facultad => facultad.EstadoRegistro == EstadoRegistro.Activo)
@@ -118,7 +142,9 @@ public sealed class SedesController(GestionCurricularDbContext db) : ControllerB
 
 [ApiController]
 [Route("api/facultades")]
-public sealed class FacultadesController(GestionCurricularDbContext db) : ControllerBase
+public sealed class FacultadesController(
+    GestionCurricularDbContext db,
+    IDesactivacionesUniversidadService desactivaciones) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<FacultadResponse>>> ObtenerTodas(
@@ -133,7 +159,9 @@ public sealed class FacultadesController(GestionCurricularDbContext db) : Contro
             .AsQueryable();
         if (!incluirInactivas)
         {
-            query = query.Where(facultad => facultad.EstadoRegistro == EstadoRegistro.Activo);
+            query = query.Where(facultad =>
+                facultad.EstadoRegistro == EstadoRegistro.Activo
+                && facultad.Sede.EstadoRegistro == EstadoRegistro.Activo);
         }
 
         var facultades = await query
@@ -177,6 +205,7 @@ public sealed class FacultadesController(GestionCurricularDbContext db) : Contro
         {
             IdSede = request.IdSede,
             NombreFacultad = request.NombreFacultad.Trim(),
+            Decano = request.Decano?.Trim(),
             DescripcionFacultad = request.DescripcionFacultad?.Trim(),
             EstadoRegistro = EstadoRegistro.Activo
         };
@@ -220,41 +249,48 @@ public sealed class FacultadesController(GestionCurricularDbContext db) : Contro
 
         facultad.IdSede = request.IdSede;
         facultad.NombreFacultad = request.NombreFacultad.Trim();
+        facultad.Decano = request.Decano?.Trim();
         facultad.DescripcionFacultad = request.DescripcionFacultad?.Trim();
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
 
     [HttpDelete("{id:int}")]
-    public Task<IActionResult> Desactivar(int id, CancellationToken cancellationToken) =>
-        CambiarEstadoAsync(id, EstadoRegistro.Inactivo, cancellationToken);
-
-    [HttpPut("{id:int}/activar")]
-    public Task<IActionResult> Activar(int id, CancellationToken cancellationToken) =>
-        CambiarEstadoAsync(id, EstadoRegistro.Activo, cancellationToken);
-
-    private async Task<IActionResult> CambiarEstadoAsync(
+    public async Task<IActionResult> Desactivar(
         int id,
-        EstadoRegistro estado,
+        ConfirmarDesactivacionRequest request,
         CancellationToken cancellationToken)
     {
-        var facultad = await db.Facultades.FindAsync([id], cancellationToken);
-        if (facultad is null) return NotFound();
-        if (estado == EstadoRegistro.Activo
-            && !await db.Sedes.AnyAsync(
-                sede => sede.IdSede == facultad.IdSede
-                    && sede.EstadoRegistro == EstadoRegistro.Activo,
-                cancellationToken))
-        {
-            return Conflict(new ProblemDetails
-            {
-                Title = "No se puede activar la facultad porque su sede está inactiva.",
-                Status = StatusCodes.Status409Conflict
-            });
-        }
+        await desactivaciones.DesactivarAsync(
+            "facultad",
+            id,
+            request.IdUsuario,
+            request.Codigo,
+            cancellationToken);
+        return NoContent();
+    }
 
-        facultad.EstadoRegistro = estado;
-        await db.SaveChangesAsync(cancellationToken);
+    [HttpPost("{id:int}/codigo-desactivacion")]
+    public async Task<IActionResult> SolicitarCodigo(
+        int id,
+        SolicitarCodigoDesactivacionRequest request,
+        CancellationToken cancellationToken)
+    {
+        await desactivaciones.SolicitarCodigoAsync(
+            "facultad",
+            id,
+            request.IdUsuario,
+            cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPut("{id:int}/activar")]
+    public async Task<IActionResult> Activar(
+        int id,
+        ActivarEntidadUniversitariaRequest request,
+        CancellationToken cancellationToken)
+    {
+        await desactivaciones.ActivarAsync("facultad", id, request.IdUsuario, cancellationToken);
         return NoContent();
     }
 
@@ -264,6 +300,7 @@ public sealed class FacultadesController(GestionCurricularDbContext db) : Contro
             facultad.IdSede,
             facultad.Sede?.NombreSede,
             facultad.NombreFacultad,
+            facultad.Decano,
             facultad.DescripcionFacultad,
             facultad.EstadoRegistro == EstadoRegistro.Activo ? "activo" : "inactivo",
             facultad.Carreras
@@ -287,7 +324,9 @@ public sealed class FacultadesController(GestionCurricularDbContext db) : Contro
 
 [ApiController]
 [Route("api/carreras")]
-public sealed class CarrerasController(GestionCurricularDbContext db) : ControllerBase
+public sealed class CarrerasController(
+    GestionCurricularDbContext db,
+    IDesactivacionesUniversidadService desactivaciones) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<CarreraResponse>>> ObtenerTodas(
@@ -297,7 +336,10 @@ public sealed class CarrerasController(GestionCurricularDbContext db) : Controll
         var query = CrearConsulta();
         if (!incluirInactivas)
         {
-            query = query.Where(carrera => carrera.EstadoRegistro == EstadoRegistro.Activo);
+            query = query.Where(carrera =>
+                carrera.EstadoRegistro == EstadoRegistro.Activo
+                && carrera.Facultad.EstadoRegistro == EstadoRegistro.Activo
+                && carrera.Facultad.Sede.EstadoRegistro == EstadoRegistro.Activo);
         }
 
         var carreras = await query.OrderBy(carrera => carrera.IdCarrera)
@@ -322,7 +364,8 @@ public sealed class CarrerasController(GestionCurricularDbContext db) : Controll
     {
         if (!await db.Facultades.AnyAsync(
                 facultad => facultad.IdFacultad == request.IdFacultad
-                    && facultad.EstadoRegistro == EstadoRegistro.Activo,
+                    && facultad.EstadoRegistro == EstadoRegistro.Activo
+                    && facultad.Sede.EstadoRegistro == EstadoRegistro.Activo,
                 cancellationToken))
         {
             return BadRequest(new ProblemDetails
@@ -387,7 +430,8 @@ public sealed class CarrerasController(GestionCurricularDbContext db) : Controll
 
         if (!await db.Facultades.AnyAsync(
                 facultad => facultad.IdFacultad == request.IdFacultad
-                    && facultad.EstadoRegistro == EstadoRegistro.Activo,
+                    && facultad.EstadoRegistro == EstadoRegistro.Activo
+                    && facultad.Sede.EstadoRegistro == EstadoRegistro.Activo,
                 cancellationToken))
         {
             return BadRequest(new ProblemDetails
@@ -443,35 +487,41 @@ public sealed class CarrerasController(GestionCurricularDbContext db) : Controll
     }
 
     [HttpDelete("{id:int}")]
-    public Task<IActionResult> Desactivar(int id, CancellationToken cancellationToken) =>
-        CambiarEstadoAsync(id, EstadoRegistro.Inactivo, cancellationToken);
-
-    [HttpPut("{id:int}/activar")]
-    public Task<IActionResult> Activar(int id, CancellationToken cancellationToken) =>
-        CambiarEstadoAsync(id, EstadoRegistro.Activo, cancellationToken);
-
-    private async Task<IActionResult> CambiarEstadoAsync(
+    public async Task<IActionResult> Desactivar(
         int id,
-        EstadoRegistro estado,
+        ConfirmarDesactivacionRequest request,
         CancellationToken cancellationToken)
     {
-        var carrera = await db.Carreras.FindAsync([id], cancellationToken);
-        if (carrera is null) return NotFound();
-        if (estado == EstadoRegistro.Activo
-            && !await db.Facultades.AnyAsync(
-                facultad => facultad.IdFacultad == carrera.IdFacultad
-                    && facultad.EstadoRegistro == EstadoRegistro.Activo,
-                cancellationToken))
-        {
-            return Conflict(new ProblemDetails
-            {
-                Title = "No se puede activar la carrera porque su facultad está inactiva.",
-                Status = StatusCodes.Status409Conflict
-            });
-        }
+        await desactivaciones.DesactivarAsync(
+            "carrera",
+            id,
+            request.IdUsuario,
+            request.Codigo,
+            cancellationToken);
+        return NoContent();
+    }
 
-        carrera.EstadoRegistro = estado;
-        await db.SaveChangesAsync(cancellationToken);
+    [HttpPost("{id:int}/codigo-desactivacion")]
+    public async Task<IActionResult> SolicitarCodigo(
+        int id,
+        SolicitarCodigoDesactivacionRequest request,
+        CancellationToken cancellationToken)
+    {
+        await desactivaciones.SolicitarCodigoAsync(
+            "carrera",
+            id,
+            request.IdUsuario,
+            cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPut("{id:int}/activar")]
+    public async Task<IActionResult> Activar(
+        int id,
+        ActivarEntidadUniversitariaRequest request,
+        CancellationToken cancellationToken)
+    {
+        await desactivaciones.ActivarAsync("carrera", id, request.IdUsuario, cancellationToken);
         return NoContent();
     }
 

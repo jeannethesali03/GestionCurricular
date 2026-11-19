@@ -14,6 +14,14 @@ public class Sede
     [Column("nombre_sede")]
     public string NombreSede { get; set; } = null!;
 
+    [MaxLength(255)]
+    [Column("direccion")]
+    public string? Direccion { get; set; }
+
+    [MaxLength(30)]
+    [Column("telefono")]
+    public string? Telefono { get; set; }
+
     [Column("estado_registro", TypeName = "enum('activo','inactivo')")]
     public EstadoRegistro EstadoRegistro { get; set; }
 
@@ -33,6 +41,10 @@ public class Facultad
     [Required, MaxLength(200)]
     [Column("nombre_facultad")]
     public string NombreFacultad { get; set; } = null!;
+
+    [MaxLength(150)]
+    [Column("decano")]
+    public string? Decano { get; set; }
 
     [MaxLength(200)]
     [Column("descripcion_facultad")]

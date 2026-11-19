@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Search, CheckCircle2, Save, Info, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { usuariosApi } from '../../services/usuariosApi';
 
 export interface DocenteItem {
   id: string;
@@ -20,28 +21,6 @@ export const EditarAsignacion: React.FC = () => {
   const esSuperUsuario = rolActual === 'SUPER_USUARIO';
   const esAdministrador = rolActual === 'ADMINISTRADOR';
 
-  // Si es un usuario estándar (o no autenticado), muestra la pantalla limpia de Página no encontrada (404)
-  if (!user || (!esSuperUsuario && !esAdministrador)) {
-    return (
-      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
-        <p className="text-6xl font-extrabold text-[#050758]">404</p>
-        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
-        <p className="text-xs text-gray-500 max-w-md mx-auto">
-          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
-        </p>
-        <div className="pt-4">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
-          >
-            Regresar al inicio
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // Datos simulados del elemento fijo que se está editando (Plan o Asignatura bloqueada)
   const [elementoActual] = useState({
     id: id || '1',
@@ -52,12 +31,41 @@ export const EditarAsignacion: React.FC = () => {
   });
 
   // Lista de docentes disponibles en el sistema
-  const [docentesDisponibles] = useState<DocenteItem[]>([
-    { id: '1', nombre: 'Lucía', apellido: 'Méndez', email: 'lucia.mendez@unicaes.edu.sv', facultad: 'Ingeniería y Tecnología' },
-    { id: '2', nombre: 'Carlos', apellido: 'Ruiz', email: 'carlos.ruiz@unicaes.edu.sv', facultad: 'Ingeniería y Tecnología' },
-    { id: '3', nombre: 'Ana', apellido: 'Gómez', email: 'ana.gomez@unicaes.edu.sv', facultad: 'Ciencias Económicas' },
-    { id: '4', nombre: 'Mario', apellido: 'Hernández', email: 'mario.hernandez@unicaes.edu.sv', facultad: 'Jurisprudencia y Ciencias Sociales' },
-  ]);
+  const [docentesDisponibles, setDocentesDisponibles] = useState<DocenteItem[]>([]);
+  const [errorDocentes, setErrorDocentes] = useState('');
+  useEffect(() => {
+    if (!user || (!esSuperUsuario && !esAdministrador)) return;
+
+    let vigente = true;
+    usuariosApi.listar()
+      .then((usuarios) => {
+        if (!vigente) return;
+        setDocentesDisponibles(usuarios
+          .filter((usuario) =>
+            ['USUARIO', 'USUARIO_ESTANDAR', 'USUARIO ESTANDAR', 'USUARIO ESTÁNDAR'].includes(
+              (usuario.nombreRol ?? '').toUpperCase(),
+            )
+            && usuario.nombreFacultad !== null,
+          )
+          .map((usuario) => {
+            const partesNombre = usuario.nombreCompleto.trim().split(/\s+/);
+            const nombre = partesNombre.shift() ?? '';
+            return {
+              id: String(usuario.idUsuario),
+              nombre,
+              apellido: partesNombre.join(' '),
+              email: usuario.correo,
+              facultad: usuario.nombreFacultad ?? '',
+            };
+          }));
+      })
+      .catch((error: unknown) => {
+        if (vigente) {
+          setErrorDocentes(error instanceof Error ? error.message : 'No se pudieron cargar los usuarios.');
+        }
+      });
+    return () => { vigente = false; };
+  }, [user, esSuperUsuario, esAdministrador]);
 
   // Docentes que ya venían asignados previamente a este elemento
   const [docentesSeleccionados, setDocentesSeleccionados] = useState<DocenteItem[]>([
@@ -68,7 +76,7 @@ export const EditarAsignacion: React.FC = () => {
   const [docenteSeleccionTemporal, setDocenteSeleccionTemporal] = useState('');
   const [guardadoExitoso, setGuardadoExitoso] = useState(false);
 
-  const facultadUsuario = user.facultadNombre || 'Ingeniería y Tecnología';
+  const facultadUsuario = user?.facultadNombre || 'Ingeniería y Tecnología';
 
   // --- FILTRADOS DE DOCENTES DISPONIBLES ---
   const docentesFiltrados = docentesDisponibles
@@ -115,6 +123,28 @@ export const EditarAsignacion: React.FC = () => {
       e.preventDefault();
     }
   };
+
+  // Si es un usuario estándar (o no autenticado), muestra la pantalla limpia de Página no encontrada (404)
+  if (!user || (!esSuperUsuario && !esAdministrador)) {
+    return (
+      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
+        <p className="text-6xl font-extrabold text-[#050758]">404</p>
+        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
+        <p className="text-xs text-gray-500 max-w-md mx-auto">
+          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
+        </p>
+        <div className="pt-4">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
+          >
+            Regresar al inicio
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-12">
@@ -197,6 +227,9 @@ export const EditarAsignacion: React.FC = () => {
                   </option>
                 ))}
               </select>
+              {errorDocentes && (
+                <p role="alert" className="mt-1 text-xs text-red-600">{errorDocentes}</p>
+              )}
             </div>
 
             <div className="md:col-span-2">

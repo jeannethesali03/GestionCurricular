@@ -13,28 +13,6 @@ export const DesactivarUsuario: React.FC = () => {
   const esSuperUsuario = rolActual === 'SUPER_USUARIO';
   const esAdministrador = rolActual === 'ADMINISTRADOR';
 
-  // Si es un usuario estándar (o no autenticado), muestra la pantalla limpia de Página no encontrada (404)
-  if (!user || (!esSuperUsuario && !esAdministrador)) {
-    return (
-      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
-        <p className="text-6xl font-extrabold text-[#050758]">404</p>
-        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
-        <p className="text-xs text-gray-500 max-w-md mx-auto">
-          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
-        </p>
-        <div className="pt-4">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
-          >
-            Regresar al inicio
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // Estados funcionales de la API
   const [registro, setRegistro] = useState<Usuario | null>(null);
   const [error, setError] = useState('');
@@ -69,6 +47,28 @@ export const DesactivarUsuario: React.FC = () => {
     }
   };
 
+  // Si es un usuario estándar (o no autenticado), muestra la pantalla limpia de Página no encontrada (404)
+  if (!user || (!esSuperUsuario && !esAdministrador)) {
+    return (
+      <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
+        <p className="text-6xl font-extrabold text-[#050758]">404</p>
+        <h2 className="text-2xl font-bold text-gray-900">Página no encontrada</h2>
+        <p className="text-xs text-gray-500 max-w-md mx-auto">
+          La página que estás buscando no existe, ha sido movida o no tienes autorización para visualizarla.
+        </p>
+        <div className="pt-4">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer shadow-sm"
+          >
+            Regresar al inicio
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-2xl mx-auto space-y-6 pt-6 pb-12">
       <div>
@@ -85,7 +85,9 @@ export const DesactivarUsuario: React.FC = () => {
         {/* Alerta de seguridad */}
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 flex items-center gap-3">
           <Lock className="w-5 h-5 shrink-0 text-red-600" />
-          <p className="text-xs font-bold">Esta acción desactivará el acceso del usuario al sistema y se conservarán sus datos y su historial.</p>
+          <p className="text-xs font-bold">
+            Esta acción desactivará el acceso del usuario y conservará sus datos e historial. Si se desactiva su facultad o sede, su cuenta también se desactivará automáticamente; la reactivación del usuario es individual y requiere que su jerarquía esté activa.
+          </p>
         </div>
 
         {/* Error visual si ocurre */}

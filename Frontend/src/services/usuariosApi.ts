@@ -51,6 +51,9 @@ export interface UsuarioInput {
   gradoAcademico: string;
   experienciaEducacionSuperior: number;
   correo: string;
+}
+
+export interface UsuarioUpdateInput extends UsuarioInput {
   password?: string;
 }
 
@@ -74,7 +77,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(message);
   }
 
-  if (response.status === 204) return undefined as T;
+  if (response.status === 204 || response.status === 202) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -90,7 +93,7 @@ export const usuariosApi = {
       method: 'POST',
       body: JSON.stringify(usuario),
     }),
-  actualizar: (id: string | number, usuario: UsuarioInput) =>
+  actualizar: (id: string | number, usuario: UsuarioUpdateInput) =>
     request<Usuario>(`/api/usuarios/${id}`, {
       method: 'PUT',
       body: JSON.stringify(usuario),
@@ -98,6 +101,18 @@ export const usuariosApi = {
   cambiarEstado: (id: string | number, activo: boolean) =>
     request<void>(`/api/usuarios/${id}${activo ? '/activar' : ''}`, {
       method: activo ? 'PUT' : 'DELETE',
+    }),
+  activarCuenta: (token: string, nuevaContrasena: string) =>
+    request<void>('/api/auth/activar-cuenta', {
+      method: 'POST',
+      body: JSON.stringify({ token, nuevaContrasena }),
+    }),
+  solicitarRestablecimientoContrasena: (id: string | number) =>
+    request<void>(`/api/usuarios/${id}/restablecer-contrasena`, { method: 'POST' }),
+  restablecerContrasena: (token: string, nuevaContrasena: string) =>
+    request<void>('/api/auth/restablecer-contrasena', {
+      method: 'POST',
+      body: JSON.stringify({ token, nuevaContrasena }),
     }),
   actualizarPerfil: (
     id: string | number,

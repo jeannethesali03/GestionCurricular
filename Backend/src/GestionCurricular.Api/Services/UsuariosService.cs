@@ -10,7 +10,8 @@ namespace GestionCurricular.Api.Services;
 
 public sealed class UsuariosService(
     GestionCurricularDbContext db,
-    IPasswordHasher<Usuario> passwordHasher) : IUsuariosService
+    IPasswordHasher<Usuario> passwordHasher,
+    IEmailSender emailSender) : IUsuariosService
 {
     public async Task<IReadOnlyList<UsuarioResponse>> ObtenerTodosAsync(
         bool incluirInactivos,
@@ -24,7 +25,12 @@ public sealed class UsuariosService(
 
         if (!incluirInactivos)
         {
-            query = query.Where(usuario => usuario.EstadoCuenta == EstadoCuenta.Activo);
+            query = query.Where(usuario =>
+                usuario.EstadoCuenta == EstadoCuenta.Activo
+                && (!usuario.IdFacultad.HasValue
+                    || (usuario.Facultad != null
+                        && usuario.Facultad.EstadoRegistro == EstadoRegistro.Activo
+                        && usuario.Facultad.Sede.EstadoRegistro == EstadoRegistro.Activo)));
         }
 
         var usuarios = await query
@@ -115,6 +121,7 @@ public sealed class UsuariosService(
         var facultades = await db.Facultades
             .AsNoTracking()
             .Where(facultad => facultad.EstadoRegistro == EstadoRegistro.Activo)
+            .Where(facultad => facultad.Sede.EstadoRegistro == EstadoRegistro.Activo)
             .OrderBy(facultad => facultad.NombreFacultad)
             .Select(facultad => new FacultadUsuarioResponse(
                 facultad.IdFacultad,
@@ -141,14 +148,23 @@ public sealed class UsuariosService(
             GradoAcademico = request.GradoAcademico.Trim(),
             ExperienciaEducacionSuperior = request.ExperienciaEducacionSuperior,
             Correo = correo,
-            EstadoCuenta = EstadoCuenta.Activo,
+            EstadoCuenta = EstadoCuenta.Inactivo,
             FechaRegistro = DateTime.UtcNow
         };
-        usuario.Password = passwordHasher.HashPassword(usuario, request.Password);
-
+        var contrasenaAleatoria = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
+        usuario.Password = passwordHasher.HashPassword(usuario, contrasenaAleatoria);
         db.Usuarios.Add(usuario);
+        var token = await CrearTokenAsync(
+            usuario,
+            TipoTokenAutenticacion.Invitacion,
+            cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await CargarRelacionesAsync(usuario, cancellationToken);
+        await emailSender.EnviarInvitacionAsync(
+            usuario.Correo,
+            usuario.NombreCompleto,
+            token,
+            cancellationToken);
 
         return ConvertirRespuesta(usuario);
     }
@@ -199,16 +215,31 @@ public sealed class UsuariosService(
             return false;
         }
 
-        usuario.EstadoCuenta = activo ? EstadoCuenta.Activo : EstadoCuenta.Inactivo;
         if (!activo)
         {
+            usuario.EstadoCuenta = EstadoCuenta.Inactivo;
             var tokens = await db.TokensAutenticacion
-                .Where(token => token.IdUsuario == id)
+                .Where(token => token.IdUsuario == id && token.Consumido != true)
                 .ToListAsync(cancellationToken);
             foreach (var token in tokens)
             {
                 token.Consumido = true;
             }
+        }
+        else if (usuario.EstadoCuenta == EstadoCuenta.Inactivo)
+        {
+            await ValidarFacultadActivaAsync(usuario.IdFacultad, cancellationToken);
+            var token = await CrearTokenAsync(
+                usuario,
+                TipoTokenAutenticacion.Activacion,
+                cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            await emailSender.EnviarInvitacionAsync(
+                usuario.Correo,
+                usuario.NombreCompleto,
+                token,
+                cancellationToken);
+            return true;
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -265,6 +296,146 @@ public sealed class UsuariosService(
         return true;
     }
 
+    public async Task ActivarCuentaAsync(
+        ActivarCuentaRequest request,
+        CancellationToken cancellationToken)
+    {
+        var ahora = DateTime.UtcNow;
+        var tokenHash = HashToken(request.Token);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        var token = await db.TokensAutenticacion
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                entity => entity.Token == tokenHash
+                    && (entity.TipoToken == TipoTokenAutenticacion.Activacion
+                        || entity.TipoToken == TipoTokenAutenticacion.Invitacion)
+                    && entity.Consumido != true
+                    && entity.Expiracion > ahora,
+                cancellationToken);
+        if (token is null)
+        {
+            throw new UsuarioServiceException(
+                StatusCodes.Status400BadRequest,
+                "El enlace de activación no es válido, ya fue utilizado o venció.");
+        }
+
+        var actualizado = await db.TokensAutenticacion
+            .Where(entity => entity.IdToken == token.IdToken
+                && entity.Consumido != true
+                && entity.Expiracion > ahora)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(entity => entity.Consumido, true),
+                cancellationToken);
+        if (actualizado != 1)
+        {
+            throw new UsuarioServiceException(
+                StatusCodes.Status400BadRequest,
+                "El enlace de activación no es válido, ya fue utilizado o venció.");
+        }
+
+        var usuario = await db.Usuarios
+            .FirstOrDefaultAsync(entity => entity.IdUsuario == token.IdUsuario, cancellationToken);
+        if (usuario is null || usuario.EstadoCuenta != EstadoCuenta.Inactivo)
+        {
+            throw new UsuarioServiceException(
+                StatusCodes.Status400BadRequest,
+                "El enlace de activación no es válido, ya fue utilizado o venció.");
+        }
+
+        await ValidarFacultadActivaAsync(usuario.IdFacultad, cancellationToken);
+        usuario.Password = passwordHasher.HashPassword(usuario, request.NuevaContrasena);
+        usuario.EstadoCuenta = EstadoCuenta.Activo;
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task SolicitarRestablecimientoContrasenaAsync(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        var usuario = await db.Usuarios
+            .FirstOrDefaultAsync(entity => entity.IdUsuario == id, cancellationToken);
+        if (usuario is null)
+        {
+            throw new UsuarioServiceException(
+                StatusCodes.Status404NotFound,
+                "No se encontró el usuario.");
+        }
+
+        if (usuario.EstadoCuenta != EstadoCuenta.Activo)
+        {
+            throw new UsuarioServiceException(
+                StatusCodes.Status409Conflict,
+                "La cuenta está inactiva. Envía primero un enlace de activación.");
+        }
+
+        await ValidarFacultadActivaAsync(usuario.IdFacultad, cancellationToken);
+        var token = await CrearTokenAsync(
+            usuario,
+            TipoTokenAutenticacion.ResetPassword,
+            cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        await emailSender.EnviarRestablecimientoContrasenaAsync(
+            usuario.Correo,
+            usuario.NombreCompleto,
+            token,
+            cancellationToken);
+    }
+
+    public async Task RestablecerContrasenaAsync(
+        RestablecerContrasenaRequest request,
+        CancellationToken cancellationToken)
+    {
+        var ahora = DateTime.UtcNow;
+        var tokenHash = HashToken(request.Token);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        var token = await db.TokensAutenticacion
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                entity => entity.Token == tokenHash
+                    && entity.TipoToken == TipoTokenAutenticacion.ResetPassword
+                    && entity.Consumido != true
+                    && entity.Expiracion > ahora,
+                cancellationToken);
+        if (token is null)
+        {
+            throw new UsuarioServiceException(
+                StatusCodes.Status400BadRequest,
+                "El enlace para cambiar la contraseña no es válido, ya fue utilizado o venció.");
+        }
+
+        var actualizado = await db.TokensAutenticacion
+            .Where(entity => entity.IdToken == token.IdToken
+                && entity.TipoToken == TipoTokenAutenticacion.ResetPassword
+                && entity.Consumido != true
+                && entity.Expiracion > ahora)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(entity => entity.Consumido, true),
+                cancellationToken);
+        if (actualizado != 1)
+        {
+            throw new UsuarioServiceException(
+                StatusCodes.Status400BadRequest,
+                "El enlace para cambiar la contraseña no es válido, ya fue utilizado o venció.");
+        }
+
+        var usuario = await db.Usuarios
+            .FirstOrDefaultAsync(entity => entity.IdUsuario == token.IdUsuario, cancellationToken);
+        if (usuario is null || usuario.EstadoCuenta != EstadoCuenta.Activo)
+        {
+            throw new UsuarioServiceException(
+                StatusCodes.Status400BadRequest,
+                "El enlace para cambiar la contraseña no es válido, ya fue utilizado o venció.");
+        }
+
+        await ValidarFacultadActivaAsync(usuario.IdFacultad, cancellationToken);
+        usuario.Password = passwordHasher.HashPassword(usuario, request.NuevaContrasena);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task<SesionUsuarioResponse?> IniciarSesionAsync(
         IniciarSesionRequest request,
         CancellationToken cancellationToken)
@@ -273,9 +444,18 @@ public sealed class UsuariosService(
         var usuario = await db.Usuarios
             .Include(entity => entity.Rol)
             .Include(entity => entity.Facultad)
+                .ThenInclude(facultad => facultad!.Sede)
             .FirstOrDefaultAsync(entity => entity.Correo == correo, cancellationToken);
 
         if (usuario is null || usuario.EstadoCuenta != EstadoCuenta.Activo)
+        {
+            return null;
+        }
+
+        if (usuario.IdFacultad.HasValue
+            && (usuario.Facultad is null
+                || usuario.Facultad.EstadoRegistro != EstadoRegistro.Activo
+                || usuario.Facultad.Sede?.EstadoRegistro != EstadoRegistro.Activo))
         {
             return null;
         }
@@ -304,6 +484,35 @@ public sealed class UsuariosService(
             usuario.GradoAcademico,
             usuario.ExperienciaEducacionSuperior);
     }
+
+    private async Task<string> CrearTokenAsync(
+        Usuario usuario,
+        TipoTokenAutenticacion tipo,
+        CancellationToken cancellationToken)
+    {
+        var tokensAnteriores = await db.TokensAutenticacion
+            .Where(token => token.IdUsuario == usuario.IdUsuario && token.Consumido != true)
+            .ToListAsync(cancellationToken);
+        foreach (var tokenAnterior in tokensAnteriores)
+        {
+            tokenAnterior.Consumido = true;
+        }
+
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        db.TokensAutenticacion.Add(new TokenAutenticacion
+        {
+            Usuario = usuario,
+            Token = HashToken(token),
+            TipoToken = tipo,
+            Expiracion = DateTime.UtcNow.AddHours(24),
+            Consumido = false
+        });
+
+        return token;
+    }
+
+    private static string HashToken(string token) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
     private PasswordVerificationResult VerificarContrasena(Usuario usuario, string contrasena)
     {
@@ -340,12 +549,30 @@ public sealed class UsuariosService(
         if (idFacultad.HasValue
             && !await db.Facultades.AnyAsync(
                 facultad => facultad.IdFacultad == idFacultad.Value
-                    && facultad.EstadoRegistro == EstadoRegistro.Activo,
+                    && facultad.EstadoRegistro == EstadoRegistro.Activo
+                    && facultad.Sede.EstadoRegistro == EstadoRegistro.Activo,
                 cancellationToken))
         {
             throw new UsuarioServiceException(
                 StatusCodes.Status400BadRequest,
                 "La facultad indicada no existe o está inactiva.");
+        }
+    }
+
+    private async Task ValidarFacultadActivaAsync(
+        int? idFacultad,
+        CancellationToken cancellationToken)
+    {
+        if (idFacultad.HasValue
+            && !await db.Facultades.AnyAsync(
+                facultad => facultad.IdFacultad == idFacultad.Value
+                    && facultad.EstadoRegistro == EstadoRegistro.Activo
+                    && facultad.Sede.EstadoRegistro == EstadoRegistro.Activo,
+                cancellationToken))
+        {
+            throw new UsuarioServiceException(
+                StatusCodes.Status409Conflict,
+                "No se puede activar el usuario hasta que su facultad y sede estén activas.");
         }
     }
 

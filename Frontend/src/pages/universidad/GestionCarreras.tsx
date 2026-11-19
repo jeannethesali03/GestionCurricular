@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -12,13 +12,58 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import {
+  universidadApi,
+  type CarreraApi,
+  type FacultadApi,
+  type SedeApi,
+} from '../../services/universidadApi';
 
 export interface CarreraItem {
   id: string;
+  idFacultad: string;
   nombre: string;
   facultad: string;
+  sede: string;
   estado: 'Activa' | 'Inactiva';
 }
+
+type FacultadConSede = FacultadApi & {
+  idSede?: string | number | null;
+  nombreSede?: string | null;
+  sede?: string | null;
+};
+
+type CarreraConSede = CarreraApi & {
+  idSede?: string | number | null;
+  nombreSede?: string | null;
+  sede?: string | null;
+};
+
+const obtenerNombreSedeFacultad = (facultad?: FacultadConSede): string => {
+  const valor = facultad?.nombreSede ?? facultad?.sede ?? '';
+  return String(valor).trim();
+};
+
+const convertirCarrera = (
+  carrera: CarreraConSede,
+  facultades: FacultadConSede[],
+): CarreraItem => {
+  const facultadMatch = facultades.find(
+    (f) => String(f.idFacultad) === String(carrera.idFacultad),
+  );
+  const sedeCarrera = String(carrera.nombreSede ?? carrera.sede ?? '').trim();
+  const sedeFacultad = obtenerNombreSedeFacultad(facultadMatch);
+
+  return {
+    id: String(carrera.idCarrera),
+    idFacultad: String(carrera.idFacultad),
+    nombre: carrera.nombreCarrera,
+    facultad: carrera.nombreFacultad ?? facultadMatch?.nombreFacultad ?? 'Facultad no disponible',
+    sede: sedeCarrera || sedeFacultad || 'Sin sede',
+    estado: carrera.estado === 'activo' ? 'Activa' : 'Inactiva',
+  };
+};
 
 export const GestionCarreras: React.FC = () => {
   const { user } = useAuth();
@@ -27,7 +72,216 @@ export const GestionCarreras: React.FC = () => {
   const rolActual = (user?.rol as string) || '';
   const esSuperUsuario = rolActual === 'SUPER_USUARIO';
 
-  // Si no es superusuario, muestra la pantalla limpia de Página no encontrada (404)
+  const [carreras, setCarreras] = useState<CarreraItem[]>([]);
+  const [facultadesDisponibles, setFacultadesDisponibles] = useState<FacultadConSede[]>([]);
+  const [facultadesActivas, setFacultadesActivas] = useState<FacultadConSede[]>([]);
+  const [sedesActivas, setSedesActivas] = useState<SedeApi[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  const cargarDatos = useCallback(async () => {
+    if (!esSuperUsuario) return;
+    try {
+      const [carrerasApi, facultadesApi, facultadesActivasApi, sedesApi] = await Promise.all([
+        universidadApi.listarCarreras(true),
+        universidadApi.listarFacultades(true),
+        universidadApi.listarFacultades(),
+        universidadApi.listarSedes(),
+      ]);
+      const facultadesConSede = facultadesApi as FacultadConSede[];
+      setFacultadesActivas(facultadesActivasApi as FacultadConSede[]);
+      setFacultadesDisponibles(facultadesConSede);
+      setSedesActivas(sedesApi);
+      setCarreras(
+        (carrerasApi as CarreraConSede[]).map((c) =>
+          convertirCarrera(c, facultadesConSede),
+        ),
+      );
+      setError('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudieron cargar las carreras.');
+    } finally {
+      setCargando(false);
+    }
+  }, [esSuperUsuario]);
+
+  useEffect(() => {
+    const cargarAlIniciar = async () => {
+      await cargarDatos();
+    };
+    void cargarAlIniciar();
+  }, [cargarDatos]);
+
+  // Estados de filtros
+  const [busqueda, setBusqueda] = useState('');
+  const [sedeFiltro, setSedeFiltro] = useState('Todas');
+  const [facultadFiltro, setFacultadFiltro] = useState('Todas');
+  const [estadoFiltro, setEstadoFiltro] = useState('Todas');
+
+  // Estados del Modal de Creación
+  const [modalCrearAbierto, setModalCrearAbierto] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [nuevaFacultad, setNuevaFacultad] = useState('');
+
+  // Estados del Modal de Edición
+  const [carreraEditando, setCarreraEditando] = useState<CarreraItem | null>(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [editFacultad, setEditFacultad] = useState('');
+
+  // Estado del Modal de Desactivación / Reactivación
+  const [carreraEstadoModal, setCarreraEstadoModal] = useState<CarreraItem | null>(null);
+  const [codigoEnviado, setCodigoEnviado] = useState(false);
+  const [codigoConfirmacion, setCodigoConfirmacion] = useState('');
+
+  const sedesDisponibles = useMemo(() => {
+    return sedesActivas
+      .map((sede) => sede.nombreSede)
+      .sort((a, b) => a.localeCompare(b, 'es'));
+  }, [sedesActivas]);
+
+  const facultadesFiltradasPorSede = useMemo(() => {
+    if (sedeFiltro === 'Todas') return facultadesActivas;
+    return facultadesActivas.filter(
+      (facultad) => obtenerNombreSedeFacultad(facultad) === sedeFiltro,
+    );
+  }, [facultadesActivas, sedeFiltro]);
+
+  const abrirModalEstado = (carrera: CarreraItem) => {
+    setCarreraEstadoModal(carrera);
+    setCodigoEnviado(false);
+    setCodigoConfirmacion('');
+    setError('');
+  };
+
+  const cerrarModalEstado = () => {
+    setCarreraEstadoModal(null);
+    setCodigoEnviado(false);
+    setCodigoConfirmacion('');
+  };
+
+  const handleCrearCarrera = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nuevoNombre.trim() || !nuevaFacultad) return;
+
+    setGuardando(true);
+    setError('');
+    try {
+      await universidadApi.crearCarrera({
+        idFacultad: Number(nuevaFacultad),
+        nombreCarrera: nuevoNombre.trim(),
+      });
+      await cargarDatos();
+      setNuevoNombre('');
+      setNuevaFacultad('');
+      setModalCrearAbierto(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo guardar la carrera.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // Abrir modal de edición precargando los datos de la carrera
+  const abrirModalEditar = (carrera: CarreraItem) => {
+    setCarreraEditando(carrera);
+    setEditNombre(carrera.nombre);
+    setEditFacultad(carrera.idFacultad);
+  };
+
+  const handleGuardarEdicion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!carreraEditando || !editNombre.trim() || !editFacultad) return;
+
+    setGuardando(true);
+    setError('');
+    try {
+      await universidadApi.actualizarCarrera(Number(carreraEditando.id), {
+        idFacultad: Number(editFacultad),
+        nombreCarrera: editNombre.trim(),
+      });
+      await cargarDatos();
+      setCarreraEditando(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo actualizar la carrera.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const handleEnviarCodigo = async () => {
+    if (!carreraEstadoModal || !user) return;
+    setGuardando(true);
+    setError('');
+    try {
+      await universidadApi.solicitarCodigo(
+        'carrera',
+        Number(carreraEstadoModal.id),
+        Number(user.id),
+      );
+      setCodigoEnviado(true);
+    } catch (e) {
+      const mensaje = e instanceof Error ? e.message : 'No se pudo enviar el código.';
+      if (mensaje.includes('Ya se envió un código')) setCodigoEnviado(true);
+      setError(mensaje);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const handleConfirmarCambioEstado = async () => {
+    if (!carreraEstadoModal || !user) return;
+    setGuardando(true);
+    setError('');
+    try {
+      if (carreraEstadoModal.estado === 'Activa') {
+        await universidadApi.desactivar(
+          'carrera',
+          Number(carreraEstadoModal.id),
+          Number(user.id),
+          codigoConfirmacion,
+        );
+      } else {
+        await universidadApi.activar('carrera', Number(carreraEstadoModal.id), Number(user.id));
+      }
+      await cargarDatos();
+      cerrarModalEstado();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo cambiar el estado de la carrera.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // Limpiar todos los filtros
+  const limpiarFiltros = () => {
+    setBusqueda('');
+    setSedeFiltro('Todas');
+    setFacultadFiltro('Todas');
+    setEstadoFiltro('Todas');
+  };
+
+  // Filtrado y ordenamiento automático (Activas primero, Inactivas al fondo)
+  const carrerasFiltradas = useMemo(() => {
+    const filtradas = carreras.filter((item) => {
+      const texto = busqueda.toLowerCase().trim();
+      const coincideTexto = !texto || item.nombre.toLowerCase().includes(texto);
+      const coincideSede = sedeFiltro === 'Todas' || item.sede === sedeFiltro;
+      const coincideFacultad = facultadFiltro === 'Todas' || item.idFacultad === facultadFiltro;
+      const coincideEstado = estadoFiltro === 'Todas' || item.estado === estadoFiltro;
+
+      return coincideTexto && coincideSede && coincideFacultad && coincideEstado;
+    });
+
+    return filtradas.sort((a, b) => {
+      if (a.estado === 'Activa' && b.estado === 'Inactiva') return -1;
+      if (a.estado === 'Inactiva' && b.estado === 'Activa') return 1;
+      return 0;
+    });
+  }, [carreras, busqueda, sedeFiltro, facultadFiltro, estadoFiltro]);
+
+  const totalActivas = carreras.filter((c) => c.estado === 'Activa').length;
+
   if (!user || !esSuperUsuario) {
     return (
       <div className="max-w-2xl mx-auto p-12 text-center space-y-4 bg-white rounded-2xl border border-gray-200 mt-16 shadow-sm">
@@ -49,137 +303,13 @@ export const GestionCarreras: React.FC = () => {
     );
   }
 
-  // Lista simulada inicial de carreras
-  const [carreras, setCarreras] = useState<CarreraItem[]>([
-    {
-      id: '1',
-      nombre: 'Ingeniería en Desarrollo de Software',
-      facultad: 'Ingeniería y Tecnología',
-      estado: 'Activa',
-    },
-    {
-      id: '2',
-      nombre: 'Licenciatura en Administración de Empresas',
-      facultad: 'Ciencias Económicas',
-      estado: 'Activa',
-    },
-    {
-      id: '3',
-      nombre: 'Ingeniería Industrial',
-      facultad: 'Ingeniería y Tecnología',
-      estado: 'Inactiva',
-    },
-  ]);
-
-  // Estados de filtros
-  const [busqueda, setBusqueda] = useState('');
-  const [facultadFiltro, setFacultadFiltro] = useState('Todas');
-  const [estadoFiltro, setEstadoFiltro] = useState('Todas');
-
-  // Estados del Modal de Creación
-  const [modalCrearAbierto, setModalCrearAbierto] = useState(false);
-  const [nuevoNombre, setNuevoNombre] = useState('');
-  const [nuevaFacultad, setNuevaFacultad] = useState('Ingeniería y Tecnología');
-
-  // Estados del Modal de Edición
-  const [carreraEditando, setCarreraEditando] = useState<CarreraItem | null>(null);
-  const [editNombre, setEditNombre] = useState('');
-  const [editFacultad, setEditFacultad] = useState('');
-
-  // Estado del Modal de Desactivación / Reactivación
-  const [carreraEstadoModal, setCarreraEstadoModal] = useState<CarreraItem | null>(null);
-
-  const facultadesDisponibles = [
-    'Ingeniería y Tecnología',
-    'Ciencias Económicas',
-    'Jurisprudencia y Ciencias Sociales',
-    'Ciencias de la Salud',
-    'Humanidades',
-  ];
-
-  // Crear nueva carrera
-  const handleCrearCarrera = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nuevoNombre.trim()) return;
-
-    const nuevaCarreraObj: CarreraItem = {
-      id: Date.now().toString(),
-      nombre: nuevoNombre.trim(),
-      facultad: nuevaFacultad,
-      estado: 'Activa',
-    };
-
-    setCarreras([nuevaCarreraObj, ...carreras]);
-    setNuevoNombre('');
-    setNuevaFacultad('Ingeniería y Tecnología');
-    setModalCrearAbierto(false);
-  };
-
-  // Abrir modal de edición precargando los datos de la carrera
-  const abrirModalEditar = (carrera: CarreraItem) => {
-    setCarreraEditando(carrera);
-    setEditNombre(carrera.nombre);
-    setEditFacultad(carrera.facultad);
-  };
-
-  // Guardar cambios de edición
-  const handleGuardarEdicion = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!carreraEditando || !editNombre.trim()) return;
-
-    setCarreras(
-      carreras.map((c) =>
-        c.id === carreraEditando.id
-          ? { ...c, nombre: editNombre.trim(), facultad: editFacultad }
-          : c
-      )
-    );
-    setCarreraEditando(null);
-  };
-
-  // Confirmar desactivación o reactivación desde su modal
-  const handleConfirmarCambioEstado = () => {
-    if (!carreraEstadoModal) return;
-
-    setCarreras(
-      carreras.map((c) =>
-        c.id === carreraEstadoModal.id
-          ? { ...c, estado: c.estado === 'Activa' ? 'Inactiva' : 'Activa' }
-          : c
-      )
-    );
-    setCarreraEstadoModal(null);
-  };
-
-  // Limpiar todos los filtros
-  const limpiarFiltros = () => {
-    setBusqueda('');
-    setFacultadFiltro('Todas');
-    setEstadoFiltro('Todas');
-  };
-
-  // Filtrado y ordenamiento automático (Activas primero, Inactivas al fondo)
-  const carrerasFiltradas = useMemo(() => {
-    const filtradas = carreras.filter((item) => {
-      const texto = busqueda.toLowerCase().trim();
-      const coincideTexto = !texto || item.nombre.toLowerCase().includes(texto);
-      const coincideFacultad = facultadFiltro === 'Todas' || item.facultad === facultadFiltro;
-      const coincideEstado = estadoFiltro === 'Todas' || item.estado === estadoFiltro;
-
-      return coincideTexto && coincideFacultad && coincideEstado;
-    });
-
-    return filtradas.sort((a, b) => {
-      if (a.estado === 'Activa' && b.estado === 'Inactiva') return -1;
-      if (a.estado === 'Inactiva' && b.estado === 'Activa') return 1;
-      return 0;
-    });
-  }, [carreras, busqueda, facultadFiltro, estadoFiltro]);
-
-  const totalActivas = carreras.filter((c) => c.estado === 'Activa').length;
-
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 relative">
+      {error && (
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+          {error}
+        </p>
+      )}
       {/* Encabezado Superior */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
@@ -214,7 +344,9 @@ export const GestionCarreras: React.FC = () => {
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200/80 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
-          <p className="text-3xl font-extrabold text-[#050758]">{facultadesDisponibles.length}</p>
+          <p className="text-3xl font-extrabold text-[#050758]">
+            {facultadesDisponibles.filter((facultad) => facultad.estado === 'activo').length}
+          </p>
           <p className="text-sm font-bold text-gray-800 mt-2">Facultades institucionales</p>
         </div>
       </div>
@@ -230,7 +362,7 @@ export const GestionCarreras: React.FC = () => {
 
         {/* Barra de Filtros */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-          <div className="md:col-span-5 border border-gray-200 rounded-xl px-3.5 py-2 flex flex-col justify-center">
+          <div className="md:col-span-4 border border-gray-200 rounded-xl px-3.5 py-2 flex flex-col justify-center">
             <label className="text-[10px] font-medium text-gray-400">Buscar por nombre</label>
             <div className="flex items-center gap-2 mt-0.5">
               <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
@@ -244,7 +376,26 @@ export const GestionCarreras: React.FC = () => {
             </div>
           </div>
 
-          <div className="md:col-span-3 border border-gray-200 rounded-xl px-3.5 py-2 flex flex-col justify-center">
+          <div className="md:col-span-2 border border-gray-200 rounded-xl px-3.5 py-2 flex flex-col justify-center">
+            <label className="text-[10px] font-medium text-gray-400">Sede</label>
+            <select
+              value={sedeFiltro}
+              onChange={(e) => {
+                setSedeFiltro(e.target.value);
+                setFacultadFiltro('Todas');
+              }}
+              className="w-full text-xs font-medium text-gray-800 bg-transparent mt-0.5 focus:outline-none cursor-pointer"
+            >
+              <option value="Todas">Todas las sedes</option>
+              {sedesDisponibles.map((sede) => (
+                <option key={sede} value={sede}>
+                  {sede}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="md:col-span-2 border border-gray-200 rounded-xl px-3.5 py-2 flex flex-col justify-center">
             <label className="text-[10px] font-medium text-gray-400">Facultad</label>
             <select
               value={facultadFiltro}
@@ -252,9 +403,9 @@ export const GestionCarreras: React.FC = () => {
               className="w-full text-xs font-medium text-gray-800 bg-transparent mt-0.5 focus:outline-none cursor-pointer"
             >
               <option value="Todas">Todas las facultades</option>
-              {facultadesDisponibles.map((fac) => (
-                <option key={fac} value={fac}>
-                  {fac}
+              {facultadesFiltradasPorSede.map((fac) => (
+                <option key={fac.idFacultad} value={String(fac.idFacultad)}>
+                  {fac.nombreFacultad}
                 </option>
               ))}
             </select>
@@ -296,7 +447,11 @@ export const GestionCarreras: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-xs">
-              {carrerasFiltradas.length === 0 ? (
+              {cargando ? (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-gray-400">Cargando carreras...</td>
+                </tr>
+              ) : carrerasFiltradas.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="py-8 text-center text-gray-400">
                     No se encontraron carreras con los filtros aplicados.
@@ -346,7 +501,7 @@ export const GestionCarreras: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setCarreraEstadoModal(item)}
+                          onClick={() => abrirModalEstado(item)}
                           title={item.estado === 'Activa' ? 'Desactivar carrera' : 'Reactivar carrera'}
                           className={`transition cursor-pointer p-1 ${
                             item.estado === 'Activa'
@@ -391,6 +546,7 @@ export const GestionCarreras: React.FC = () => {
             </div>
 
             <form onSubmit={handleCrearCarrera} className="space-y-4">
+              {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-gray-700">
                   Nombre de la carrera <span className="text-red-500">*</span>
@@ -412,13 +568,15 @@ export const GestionCarreras: React.FC = () => {
                 <div className="relative">
                   <Building2 className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-400" />
                   <select
+                    required
                     value={nuevaFacultad}
                     onChange={(e) => setNuevaFacultad(e.target.value)}
                     className="w-full bg-white border border-gray-200 focus:border-[#050758] rounded-xl pl-10 pr-4 py-3 text-xs text-gray-800 font-medium focus:outline-none transition cursor-pointer"
                   >
-                    {facultadesDisponibles.map((fac) => (
-                      <option key={fac} value={fac}>
-                        {fac}
+                    <option value="" disabled>Selecciona una facultad</option>
+                    {facultadesActivas.map((fac) => (
+                      <option key={fac.idFacultad} value={String(fac.idFacultad)}>
+                        {fac.nombreFacultad}
                       </option>
                     ))}
                   </select>
@@ -435,7 +593,8 @@ export const GestionCarreras: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-sm transition cursor-pointer"
+                  disabled={guardando || facultadesActivas.length === 0}
+                  className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-sm transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Guardar carrera
                 </button>
@@ -466,6 +625,7 @@ export const GestionCarreras: React.FC = () => {
             </div>
 
             <form onSubmit={handleGuardarEdicion} className="space-y-4">
+              {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-gray-700">
                   Nombre de la carrera <span className="text-red-500">*</span>
@@ -490,9 +650,9 @@ export const GestionCarreras: React.FC = () => {
                     onChange={(e) => setEditFacultad(e.target.value)}
                     className="w-full bg-white border border-gray-200 focus:border-[#050758] rounded-xl pl-10 pr-4 py-3 text-xs text-gray-800 font-medium focus:outline-none transition cursor-pointer"
                   >
-                    {facultadesDisponibles.map((fac) => (
-                      <option key={fac} value={fac}>
-                        {fac}
+                    {facultadesActivas.map((fac) => (
+                      <option key={fac.idFacultad} value={String(fac.idFacultad)}>
+                        {fac.nombreFacultad}
                       </option>
                     ))}
                   </select>
@@ -509,7 +669,8 @@ export const GestionCarreras: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-sm transition cursor-pointer"
+                  disabled={guardando}
+                  className="bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-sm transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Guardar cambios
                 </button>
@@ -551,7 +712,7 @@ export const GestionCarreras: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setCarreraEstadoModal(null)}
+                onClick={cerrarModalEstado}
                 className="text-gray-400 hover:text-gray-600 transition cursor-pointer p-1 rounded-lg"
               >
                 <X className="w-5 h-5" />
@@ -565,21 +726,54 @@ export const GestionCarreras: React.FC = () => {
 
             <p className="text-xs text-gray-600 leading-relaxed">
               {carreraEstadoModal.estado === 'Activa'
-                ? 'Al desactivar esta carrera, dejará de estar disponible para nuevos planes de estudio y pasará al final del listado.'
-                : 'Al reactivar esta carrera, volverá a estar disponible en el catálogo activo de la facultad.'}
+                ? 'Al desactivar esta carrera, también se desactivarán sus planes de estudio y asignaturas. Se enviará un código de confirmación al correo del superusuario.'
+                : 'Al reactivar esta carrera, sus planes de estudio y asignaturas seguirán inactivos y deberás activarlos manualmente.'}
             </p>
+
+            {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+
+            {carreraEstadoModal.estado === 'Activa' && codigoEnviado && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-gray-700">
+                  Código de confirmación (6 dígitos)
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  pattern="[0-9]{6}"
+                  value={codigoConfirmacion}
+                  onChange={(e) => {
+                    setCodigoConfirmacion(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    setError('');
+                  }}
+                  placeholder="000000"
+                  className="w-full bg-white border border-gray-200 focus:border-[#050758] rounded-xl px-4 py-3 text-xs text-gray-800 font-medium tracking-widest focus:outline-none transition"
+                />
+                <p className="text-[11px] text-gray-500">El código vence en 10 minutos y solo puede utilizarse una vez.</p>
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
               <button
                 type="button"
-                onClick={() => setCarreraEstadoModal(null)}
+                onClick={cerrarModalEstado}
                 className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-bold px-5 py-2.5 rounded-xl transition cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                onClick={handleConfirmarCambioEstado}
+                onClick={
+                  carreraEstadoModal.estado === 'Activa' && !codigoEnviado
+                    ? handleEnviarCodigo
+                    : handleConfirmarCambioEstado
+                }
+                disabled={
+                  guardando
+                  || (carreraEstadoModal.estado === 'Activa' && codigoEnviado && codigoConfirmacion.length !== 6)
+                }
                 className={`text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-sm transition cursor-pointer ${
                   carreraEstadoModal.estado === 'Activa'
                     ? 'bg-red-600 hover:bg-red-700'
@@ -587,7 +781,7 @@ export const GestionCarreras: React.FC = () => {
                 }`}
               >
                 {carreraEstadoModal.estado === 'Activa'
-                  ? 'Sí, desactivar'
+                  ? codigoEnviado ? 'Confirmar desactivación' : 'Enviar código'
                   : 'Sí, reactivar'}
               </button>
             </div>

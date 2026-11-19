@@ -13,7 +13,7 @@ GET {{baseUrl}}/api/usuarios/{{id}}
 ### Consultar el detalle y las asignaciones de un usuario
 GET {{baseUrl}}/api/usuarios/{{id}}/detalles
 
-### Crear usuario (cambiar los ID de rol y facultad por valores de catalogos)
+### Crear usuario (el correo recibirá el enlace de activación)
 POST {{baseUrl}}/api/usuarios
 Content-Type: application/json
 
@@ -23,8 +23,28 @@ Content-Type: application/json
   "nombreCompleto": "Usuario de Prueba",
   "gradoAcademico": "Licenciatura",
   "experienciaEducacionSuperior": 0,
-  "correo": "usuario.prueba@example.edu",
-  "password": "Cambiar123!"
+  "correo": "usuario.prueba@example.edu"
+}
+
+### Activar una cuenta con el token recibido por correo
+POST {{baseUrl}}/api/auth/activar-cuenta
+Content-Type: application/json
+
+{
+  "token": "REEMPLAZAR_POR_EL_TOKEN_DEL_CORREO",
+  "nuevaContrasena": "ElegirClave123!"
+}
+
+### Enviar al usuario activo un enlace para cambiar la contraseña
+POST {{baseUrl}}/api/usuarios/{{id}}/restablecer-contrasena
+
+### Cambiar la contraseña con el token de un solo uso recibido por correo
+POST {{baseUrl}}/api/auth/restablecer-contrasena
+Content-Type: application/json
+
+{
+  "token": "REEMPLAZAR_POR_EL_TOKEN_DEL_CORREO",
+  "nuevaContrasena": "ElegirClave123!"
 }
 
 ### Actualizar perfil administrativo
@@ -71,5 +91,5 @@ Content-Type: application/json
 ### Desactivar usuario
 DELETE {{baseUrl}}/api/usuarios/{{id}}
 
-### Reactivar usuario
+### Enviar enlace de activación a un usuario inactivo
 PUT {{baseUrl}}/api/usuarios/{{id}}/activar

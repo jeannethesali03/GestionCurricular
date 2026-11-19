@@ -19,6 +19,8 @@ USE Gestion_curricular;
 CREATE TABLE Sede (
     id_sede INT AUTO_INCREMENT NOT NULL,
     nombre_sede VARCHAR(200) NOT NULL,
+    direccion VARCHAR(255),
+    telefono VARCHAR(30),
     estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
     PRIMARY KEY (id_sede)
 ) ENGINE=InnoDB;
@@ -59,6 +61,7 @@ CREATE TABLE Facultad (
     id_facultad INT AUTO_INCREMENT NOT NULL,
     id_sede INT NOT NULL,
     nombre_facultad VARCHAR(200) NOT NULL,
+    decano VARCHAR(150),
     descripcion_facultad VARCHAR(200),
     estado_registro ENUM('activo', 'inactivo') NOT NULL DEFAULT 'activo',
     PRIMARY KEY (id_facultad),
@@ -136,11 +139,23 @@ CREATE TABLE Tokens_autenticacion (
     id_token INT AUTO_INCREMENT NOT NULL,
     id_usuario INT NOT NULL,
     token VARCHAR(255) NOT NULL UNIQUE,
-    tipo_token ENUM('activacion','invitacion','reset_password') NOT NULL,
+    tipo_token ENUM('activacion','invitacion','reset_password','codigo_desactivacion') NOT NULL,
     expiracion DATETIME NOT NULL,
     consumido BOOLEAN DEFAULT FALSE,
+    intentos INT NOT NULL DEFAULT 0,
     PRIMARY KEY (id_token),
     FOREIGN KEY (id_usuario) REFERENCES Usuarios(id_usuario)
+) ENGINE=InnoDB;
+
+CREATE TABLE Restauraciones_jerarquia (
+    id_restauracion INT AUTO_INCREMENT NOT NULL,
+    tipo_raiz VARCHAR(20) NOT NULL,
+    id_raiz INT NOT NULL,
+    tipo_entidad VARCHAR(20) NOT NULL,
+    id_entidad INT NOT NULL,
+    estado_previo VARCHAR(32) NOT NULL,
+    PRIMARY KEY (id_restauracion),
+    INDEX idx_restauraciones_jerarquia_raiz (tipo_raiz, id_raiz)
 ) ENGINE=InnoDB;
 
 
