@@ -9,7 +9,9 @@ namespace GestionCurricular.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public sealed class AutenticacionController(IUsuariosService usuarios) : ControllerBase
+public sealed class AutenticacionController(
+    IUsuariosService usuarios,
+    SesionPorPestanaService sesiones) : ControllerBase
 {
     /// <summary>Valida una invitación de un solo uso y activa la cuenta con una contraseña nueva.</summary>
     [HttpPost("activar-cuenta")]
@@ -52,6 +54,11 @@ public sealed class AutenticacionController(IUsuariosService usuarios) : Control
             });
         }
 
+        var sessionToken = sesiones.Crear(
+            sesion.Id,
+            sesion.Nombre,
+            sesion.Email,
+            sesion.Rol);
         var claims = new[]
         {
             new Claim(ClaimTypes.NameIdentifier, sesion.Id),
@@ -65,13 +72,15 @@ public sealed class AutenticacionController(IUsuariosService usuarios) : Control
             new ClaimsPrincipal(identity),
             new AuthenticationProperties { IsPersistent = true });
 
-        return Ok(sesion);
+        return Ok(sesion with { SessionToken = sessionToken });
     }
 
     [HttpPost("logout")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> CerrarSesion()
     {
+        if (Request.Headers.TryGetValue("X-Session-Token", out var valores))
+            sesiones.Revocar(valores.ToString());
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return NoContent();
     }

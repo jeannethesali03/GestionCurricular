@@ -1,14 +1,50 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FileText, AlignLeft, Target, Layers, Compass, CheckSquare, BookOpen, ArrowUpRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAsignaturaDetalle } from '../../hooks/useAsignaturaDetalle';
+import { asignaturasApi } from '../../services/asignaturasApi';
 
 export const DetalleAsignatura: React.FC = () => {
   const { asignaturaId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
   const { detalle, cargando, error } = useAsignaturaDetalle();
+  const [bloqueos, setBloqueos] = useState<{
+    asignaturaId: number;
+    vistas: Record<string, string>;
+  } | null>(null);
+  const [errorBloqueos, setErrorBloqueos] = useState('');
+
+  useEffect(() => {
+    const id = Number(asignaturaId);
+    if (!detalle || detalle.estado !== 'activo' || !Number.isInteger(id) || id <= 0) return;
+
+    let vigente = true;
+    const consultarBloqueos = () => {
+      asignaturasApi.obtenerBloqueos(id)
+        .then((resultado) => {
+          if (vigente) {
+            setBloqueos({ asignaturaId: id, vistas: resultado });
+            setErrorBloqueos('');
+          }
+        })
+        .catch((errorConsulta: unknown) => {
+          if (vigente) {
+            setErrorBloqueos(errorConsulta instanceof Error
+              ? errorConsulta.message
+              : 'No se pudo consultar la disponibilidad de las vistas.');
+          }
+        });
+    };
+
+    consultarBloqueos();
+    const intervalo = window.setInterval(consultarBloqueos, 5000);
+    return () => {
+      vigente = false;
+      window.clearInterval(intervalo);
+    };
+  }, [asignaturaId, detalle?.estado]);
 
   if (!user) return null;
   if (cargando) return <p className="text-xs text-gray-500">Cargando asignatura...</p>;
@@ -105,7 +141,12 @@ export const DetalleAsignatura: React.FC = () => {
   ];
 
   const handleCardClick = (ruta: string) => {
-    if (desactivada) return;
+    const estaBloqueada = Boolean(
+      bloqueos
+      && bloqueos.asignaturaId === Number(asignaturaId)
+      && bloqueos.vistas[ruta],
+    );
+    if (desactivada || estaBloqueada) return;
     if (ruta === 'generalidades') {
       navigate(`/asignaturas/${asignaturaId}/generalidades`);
     } else if (ruta === 'descripcion') {
@@ -184,18 +225,29 @@ export const DetalleAsignatura: React.FC = () => {
           <p className="text-xs text-gray-500 mt-0.5">
             Estructura curricular y contenidos evaluables del programa.
           </p>
+          {errorBloqueos && (
+            <p role="alert" className="text-xs text-red-700 mt-2">
+              No se pudo consultar la disponibilidad: {errorBloqueos}
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {seccionesAsignatura.map((sec) => {
             const IconoComponente = sec.icono;
+            const vistasBloqueadas = bloqueos
+              && bloqueos.asignaturaId === Number(asignaturaId)
+              ? bloqueos.vistas
+              : {};
+            const bloqueadoPor = !desactivada ? vistasBloqueadas[sec.ruta] : undefined;
+            const noDisponible = desactivada || Boolean(bloqueadoPor);
             return (
               <div
                 key={sec.id}
                 onClick={() => handleCardClick(sec.ruta)}
-                aria-disabled={desactivada}
+                aria-disabled={noDisponible}
                 className={`bg-white rounded-2xl border border-gray-200/80 p-5 shadow-[0_1px_3px_rgba(0,0,0,0.02)] flex flex-col justify-between space-y-4 transition group ${
-                  desactivada ? 'opacity-60 cursor-not-allowed' : 'hover:border-[#050758] hover:shadow-md cursor-pointer'
+                  noDisponible ? 'opacity-60 cursor-not-allowed' : 'hover:border-[#050758] hover:shadow-md cursor-pointer'
                 }`}
               >
                 <div className="flex items-start justify-between">
@@ -209,20 +261,24 @@ export const DetalleAsignatura: React.FC = () => {
                   <h4 className="text-sm font-bold text-gray-900 group-hover:text-[#050758] transition">
                     {sec.titulo}
                   </h4>
-                  <p className="text-xs text-gray-500 mt-1">{sec.descripcion}</p>
+                  <p className={`text-xs mt-1 ${bloqueadoPor ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}>
+                    {bloqueadoPor
+                      ? `Vista bloqueada porque está siendo editada por "${bloqueadoPor}".`
+                      : sec.descripcion}
+                  </p>
                 </div>
 
                 <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
                   <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-                    sec.estado === 'Completa' ? 'text-emerald-700' : 'text-gray-500'
+                    bloqueadoPor ? 'text-amber-700' : sec.estado === 'Completa' ? 'text-emerald-700' : 'text-gray-500'
                   }`}>
                     <span className={`w-2 h-2 rounded-full ${
-                      sec.estado === 'Completa' ? 'bg-emerald-600' : 'bg-gray-400'
+                      bloqueadoPor ? 'bg-amber-600' : sec.estado === 'Completa' ? 'bg-emerald-600' : 'bg-gray-400'
                     }`} />
-                    {sec.estado}
+                    {bloqueadoPor ? 'Bloqueada' : sec.estado}
                   </span>
 
-                  {!desactivada && (
+                  {!noDisponible && (
                     <span className="inline-flex items-center gap-1 text-xs text-[#050758] font-semibold">
                       <span>Editar</span>
                       <ArrowUpRight className="w-3.5 h-3.5" />

@@ -49,6 +49,8 @@ builder.Services.AddScoped<IPasswordHasher<Usuario>, PasswordHasher<Usuario>>();
 builder.Services.AddScoped<IUsuariosService, UsuariosService>();
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IDesactivacionesUniversidadService, DesactivacionesUniversidadService>();
+builder.Services.AddSingleton<AsignaturaEdicionLockService>();
+builder.Services.AddSingleton<SesionPorPestanaService>();
 builder.Services.AddExceptionHandler<UsuarioServiceExceptionHandler>();
 builder.Services.AddProblemDetails();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -82,6 +84,7 @@ if (!app.Environment.IsDevelopment())
 app.UseCors("FrontendDev");
 
 app.UseAuthentication();
+app.UseMiddleware<SesionPorPestanaMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();

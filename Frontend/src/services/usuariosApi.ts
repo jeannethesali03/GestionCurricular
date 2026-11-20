@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, authHeaders } from '../config/api';
 
 export interface Usuario {
   idUsuario: number;
@@ -61,6 +61,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     credentials: 'include',
     headers: {
+      ...authHeaders(),
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
     },
@@ -134,6 +135,7 @@ export const usuariosApi = {
   iniciarSesion: (correo: string, password: string) =>
     request<{
       id: string;
+      sessionToken: string;
       nombre: string;
       email: string;
       rol: 'SUPER_USUARIO' | 'ADMINISTRADOR' | 'USUARIO';

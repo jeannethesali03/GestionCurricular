@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, authHeaders } from '../config/api';
 
 export type EstadoRegistro = 'activo' | 'inactivo';
 export type TipoEntidadUniversitaria = 'sede' | 'facultad' | 'carrera';
@@ -55,6 +55,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     credentials: 'include',
     headers: {
+      ...authHeaders(),
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
     },
