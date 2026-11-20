@@ -207,6 +207,29 @@ public sealed class DesactivacionesUniversidadService(
                 carrera.EstadoRegistro = EstadoRegistro.Activo;
                 break;
             }
+            case "asignatura":
+            {
+                var asignatura = await db.Asignaturas.FindAsync([idEntidad], cancellationToken);
+                if (asignatura is null) throw EntidadNoEncontrada(tipoEntidad);
+
+                var tieneCarreras = await db.AsignaturasCarrera
+                    .AnyAsync(relacion => relacion.IdAsignatura == idEntidad, cancellationToken);
+                if (tieneCarreras
+                    && !await db.AsignaturasCarrera.AnyAsync(
+                        relacion => relacion.IdAsignatura == idEntidad
+                            && relacion.Carrera.EstadoRegistro == EstadoRegistro.Activo
+                            && relacion.Carrera.Facultad.EstadoRegistro == EstadoRegistro.Activo
+                            && relacion.Carrera.Facultad.Sede.EstadoRegistro == EstadoRegistro.Activo,
+                        cancellationToken))
+                {
+                    throw new UsuarioServiceException(
+                        StatusCodes.Status409Conflict,
+                        "No se puede activar una asignatura hasta que al menos una carrera relacionada esté activa.");
+                }
+
+                asignatura.EstadoAsignatura = EstadoAsignatura.Activo;
+                break;
+            }
         }
 
         var restauracionesAnteriores = await db.RestauracionesJerarquia
@@ -277,6 +300,15 @@ public sealed class DesactivacionesUniversidadService(
                 carreraIds = [idEntidad];
                 await DesactivarCarrerasAsync(carreraIds, cancellationToken);
                 carrera.EstadoRegistro = EstadoRegistro.Inactivo;
+                break;
+            }
+            case "asignatura":
+            {
+                var asignatura = await db.Asignaturas.FindAsync([idEntidad], cancellationToken);
+                if (asignatura is null) throw EntidadNoEncontrada(tipoEntidad);
+                if (asignatura.EstadoAsignatura != EstadoAsignatura.Activo)
+                    throw EntidadYaInactiva(tipoEntidad);
+                asignatura.EstadoAsignatura = EstadoAsignatura.Inactivo;
                 break;
             }
         }
@@ -380,6 +412,7 @@ public sealed class DesactivacionesUniversidadService(
                 item.IdFacultad == idEntidad
                 && item.Sede.EstadoRegistro == EstadoRegistro.Activo,
                 cancellationToken),
+            "asignatura" => true,
             "carrera" => await db.Carreras.AnyAsync(item =>
                 item.IdCarrera == idEntidad
                 && item.Facultad.EstadoRegistro == EstadoRegistro.Activo
@@ -411,6 +444,9 @@ public sealed class DesactivacionesUniversidadService(
             "carrera" => await db.Carreras.Where(item =>
                     item.IdCarrera == idEntidad && item.EstadoRegistro == EstadoRegistro.Activo)
                 .Select(item => item.NombreCarrera).FirstOrDefaultAsync(cancellationToken),
+            "asignatura" => await db.Asignaturas.Where(item =>
+                    item.IdAsignatura == idEntidad && item.EstadoAsignatura == EstadoAsignatura.Activo)
+                .Select(item => item.NombreAsignatura).FirstOrDefaultAsync(cancellationToken),
             _ => null
         };
 
@@ -448,7 +484,7 @@ public sealed class DesactivacionesUniversidadService(
 
     private static void ValidarTipo(string tipoEntidad)
     {
-        if (tipoEntidad is not ("sede" or "facultad" or "carrera"))
+        if (tipoEntidad is not ("sede" or "facultad" or "carrera" or "asignatura"))
         {
             throw new UsuarioServiceException(
                 StatusCodes.Status400BadRequest,
@@ -461,6 +497,7 @@ public sealed class DesactivacionesUniversidadService(
         "sede" => "sede",
         "facultad" => "facultad",
         "carrera" => "carrera",
+        "asignatura" => "asignatura",
         _ => "entidad"
     };
 

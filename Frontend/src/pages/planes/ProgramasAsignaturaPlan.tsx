@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Save, BookOpen, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ModalReferencia } from '../../components/modals/ModalReferencia';
 import { ModalAlertaSalida } from '../../components/modals/ModalAlertaSalida';
+import { planAsignaturasApi, type AsignaturasDePlanApi } from '../../services/planAsignaturasApi';
 
 interface AsignaturaPrograma {
   id: string;
   codigo: string;
   nombre: string;
-  ciclo: string;
+  numeroCiclo: number;
+  numeroOrden: number;
   uv: number;
   seccionesCompletas: string;
   origen: string;
@@ -20,99 +22,179 @@ export const ProgramasAsignaturaPlan: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [mostrarTodasFacultad, setMostrarTodasFacultad] = useState(false);
   const [materiaSeleccionada, setMateriaSeleccionada] = useState('');
   const [filtroTexto, setFiltroTexto] = useState('');
+  const [numeroCiclo, setNumeroCiclo] = useState('1');
+  const [numeroOrden, setNumeroOrden] = useState('1');
+  const [posicionesEditadas, setPosicionesEditadas] = useState<
+    Record<string, { numeroCiclo: string; numeroOrden: string }>
+  >({});
   const [guardadoExitoso, setGuardadoExitoso] = useState(false);
+  const [errorOperacion, setErrorOperacion] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [version, setVersion] = useState(0);
+  const [resultado, setResultado] = useState<{
+    clave: string;
+    plan: AsignaturasDePlanApi | null;
+    error: string;
+  } | null>(null);
   const [modalReferenciarAbierto, setModalReferenciarAbierto] = useState(false);
 
   // Estados para el modal de confirmación de salida
   const [modalSalidaAbierto, setModalSalidaAbierto] = useState(false);
   const [rutaDestinoPendiente, setRutaDestinoPendiente] = useState<string | null>(null);
 
-  // Listado de materias ya vinculadas al plan
-  const [materiasVinculadas, setMateriasVinculadas] = useState<AsignaturaPrograma[]>([
-    { id: '1', codigo: 'PRG101', nombre: 'Programación I', ciclo: 'I', uv: 4, seccionesCompletas: '7/7 secciones completas', origen: 'Plan ISI-2022' },
-  ]);
+  const idPlan = Number(planId);
+  const clave = `${user?.id ?? ''}:${idPlan}`;
+  const planValido = Boolean(user) && Number.isInteger(idPlan) && idPlan > 0;
+
+  useEffect(() => {
+    let vigente = true;
+    if (!planValido) return () => { vigente = false; };
+
+    planAsignaturasApi.obtener(idPlan)
+      .then((plan) => {
+        if (vigente) {
+          setResultado({ clave, plan, error: '' });
+          setPosicionesEditadas({});
+        }
+      })
+      .catch((error: unknown) => {
+        if (vigente) {
+          setResultado({
+            clave,
+            plan: null,
+            error: error instanceof Error ? error.message : 'No se pudo cargar el programa del plan.',
+          });
+        }
+      });
+
+    return () => { vigente = false; };
+  }, [clave, idPlan, planValido, version]);
+
+  const resultadoActual = resultado?.clave === clave ? resultado : null;
+  const planActual = resultadoActual?.plan ?? null;
+  const materiasVinculadas: AsignaturaPrograma[] = (planActual?.asignaturas ?? []).map((item) => ({
+    id: String(item.idAsignatura),
+    codigo: item.codigoAsignatura,
+    nombre: item.nombreAsignatura,
+    numeroCiclo: item.numeroCiclo,
+    numeroOrden: item.numeroOrden,
+    uv: item.unidadesValorativas,
+    seccionesCompletas: `${item.seccionesCompletas}/${item.seccionesTotal} secciones completas`,
+    origen: planActual?.nombreCarrera ?? '',
+  }));
+  const materiasDisponibles = useMemo(() => (planActual?.opcionesAsignaturas ?? [])
+    .filter((materia) => {
+      const texto = `${materia.codigoAsignatura} ${materia.nombreAsignatura}`.toLocaleLowerCase();
+      return texto.includes(filtroTexto.trim().toLocaleLowerCase());
+    }), [filtroTexto, planActual]);
+  const cargando = planValido && !resultadoActual;
+  const errorCarga = !planValido
+    ? 'El plan indicado no es válido.'
+    : resultadoActual?.error ?? '';
 
   if (!user) return null;
+
+  const registrarExito = () => {
+    setErrorOperacion('');
+    setGuardadoExitoso(true);
+    setTimeout(() => setGuardadoExitoso(false), 4000);
+  };
 
   const intentarSalir = (destino: string) => {
     setRutaDestinoPendiente(destino);
     setModalSalidaAbierto(true);
   };
 
-  // Catálogos base
-  const materiasPlanAnteriorISI2022 = [
-    { codigo: 'ALG101', nombre: 'Álgebra Lineal', ciclo: 'I', uv: 4, origen: 'Plan ISI-2022' },
-    { codigo: 'FDI101', nombre: 'Fundamentos de Informática', ciclo: 'I', uv: 3, origen: 'Plan ISI-2022' },
-    { codigo: 'EST201', nombre: 'Estadística', ciclo: 'III', uv: 4, origen: 'Plan ISI-2022' },
-  ];
+  const handleAgregarMateria = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!materiaSeleccionada || !planActual) return;
+    const ciclo = Number(numeroCiclo);
+    const orden = Number(numeroOrden);
+    if (!Number.isInteger(ciclo) || ciclo < 1 || !Number.isInteger(orden) || orden < 1) {
+      setErrorOperacion('El ciclo y el número de orden deben ser números enteros mayores que cero.');
+      return;
+    }
 
-  const materiasFacultadGeneral = [
-    ...materiasPlanAnteriorISI2022,
-    { codigo: 'MAT101', nombre: 'Matemática Discreta', ciclo: 'II', uv: 4, origen: 'Facultad' },
-    { codigo: 'QUI101', nombre: 'Química General', ciclo: 'II', uv: 4, origen: 'Facultad' },
-    { codigo: 'CONT101', nombre: 'Contabilidad Básica', ciclo: 'V', uv: 3, origen: 'Facultad' },
-  ];
-
-  const catalogoBase = mostrarTodasFacultad ? materiasFacultadGeneral : materiasPlanAnteriorISI2022;
-
-  // Excluir del combobox las materias que ya han sido vinculadas y filtrar según el texto ingresado
-  const codigosVinculados = materiasVinculadas.map(m => m.codigo);
-  const materiasDisponibles = catalogoBase.filter(
-    m => !codigosVinculados.includes(m.codigo) &&
-         (`${m.codigo} · ${m.nombre}`.toLowerCase().includes(filtroTexto.toLowerCase()))
-  );
-
-  const handleCambioFiltro = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const texto = e.target.value;
-    setFiltroTexto(texto);
-
-    // Si al filtrar queda exactamente una opción, se selecciona automáticamente en el combobox
-    const filtradas = catalogoBase.filter(
-      m => !codigosVinculados.includes(m.codigo) &&
-           (`${m.codigo} · ${m.nombre}`.toLowerCase().includes(texto.toLowerCase()))
-    );
-
-    if (texto.trim() !== '' && filtradas.length === 1) {
-      setMateriaSeleccionada(`${filtradas[0].codigo} · ${filtradas[0].nombre}`);
-    } else if (texto.trim() === '') {
+    setGuardando(true);
+    setErrorOperacion('');
+    try {
+      await planAsignaturasApi.guardar(idPlan, Number(materiaSeleccionada), ciclo, orden);
       setMateriaSeleccionada('');
+      setFiltroTexto('');
+      setNumeroOrden(String(materiasVinculadas.length + 2));
+      setVersion((actual) => actual + 1);
+      registrarExito();
+    } catch (error) {
+      setErrorOperacion(error instanceof Error ? error.message : 'No se pudo vincular la asignatura.');
+    } finally {
+      setGuardando(false);
     }
   };
 
-  const handleAgregarMateria = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!materiaSeleccionada) return;
+  const guardarPosicion = async (materia: AsignaturaPrograma) => {
+    const posicion = posicionesEditadas[materia.id] ?? {
+      numeroCiclo: String(materia.numeroCiclo),
+      numeroOrden: String(materia.numeroOrden),
+    };
+    const ciclo = Number(posicion.numeroCiclo);
+    const orden = Number(posicion.numeroOrden);
+    if (!Number.isInteger(ciclo) || ciclo < 1 || !Number.isInteger(orden) || orden < 1) {
+      setErrorOperacion('El ciclo y el número de orden deben ser números enteros mayores que cero.');
+      return;
+    }
 
-    const encontrada = catalogoBase.find(m => `${m.codigo} · ${m.nombre}` === materiaSeleccionada);
-    if (!encontrada) return;
+    setGuardando(true);
+    setErrorOperacion('');
+    try {
+      await planAsignaturasApi.guardar(idPlan, Number(materia.id), ciclo, orden);
+      setVersion((actual) => actual + 1);
+      registrarExito();
+    } catch (error) {
+      setErrorOperacion(error instanceof Error ? error.message : 'No se pudo guardar el ciclo y orden.');
+    } finally {
+      setGuardando(false);
+    }
+  };
 
-    setMateriasVinculadas([
-      ...materiasVinculadas,
-      {
-        id: Date.now().toString(),
-        codigo: encontrada.codigo,
-        nombre: encontrada.nombre,
-        ciclo: encontrada.ciclo,
-        uv: encontrada.uv,
-        seccionesCompletas: '7/7 secciones completas',
-        origen: encontrada.origen
+  const handleQuitarMateria = async (idAsignatura: string) => {
+    setGuardando(true);
+    setErrorOperacion('');
+    try {
+      await planAsignaturasApi.quitar(idPlan, Number(idAsignatura));
+      setVersion((actual) => actual + 1);
+      registrarExito();
+    } catch (error) {
+      setErrorOperacion(error instanceof Error ? error.message : 'No se pudo quitar la asignatura del plan.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const handleGuardar = async () => {
+    setGuardando(true);
+    setErrorOperacion('');
+    try {
+      for (const materia of materiasVinculadas) {
+        const posicion = posicionesEditadas[materia.id] ?? {
+          numeroCiclo: String(materia.numeroCiclo),
+          numeroOrden: String(materia.numeroOrden),
+        };
+        const ciclo = Number(posicion.numeroCiclo);
+        const orden = Number(posicion.numeroOrden);
+        if (!Number.isInteger(ciclo) || ciclo < 1 || !Number.isInteger(orden) || orden < 1) {
+          throw new Error(`Corrige el ciclo y el orden de ${materia.codigo}. Deben ser enteros mayores que cero.`);
+        }
+        await planAsignaturasApi.guardar(idPlan, Number(materia.id), ciclo, orden);
       }
-    ]);
-    setMateriaSeleccionada('');
-    setFiltroTexto('');
-  };
-
-  const handleQuitarMateria = (codigo: string) => {
-    setMateriasVinculadas(materiasVinculadas.filter(m => m.codigo !== codigo));
-  };
-
-  const handleGuardar = (e: React.FormEvent) => {
-    e.preventDefault();
-    setGuardadoExitoso(true);
-    setTimeout(() => setGuardadoExitoso(false), 4000);
+      setVersion((actual) => actual + 1);
+      registrarExito();
+    } catch (error) {
+      setErrorOperacion(error instanceof Error ? error.message : 'No se pudo guardar la estructura del plan.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
@@ -123,7 +205,9 @@ export const ProgramasAsignaturaPlan: React.FC = () => {
             Programas de cada asignatura
           </h2>
           <p className="text-xs text-gray-500 mt-1 font-medium">
-            Ingeniería en Sistemas · ISI-2027 · Ingeniería y Tecnología
+            {planActual
+              ? `${planActual.nombreCarrera} · ${planActual.cicloInicio} - ${planActual.cicloFin}`
+              : 'Cargando información del plan...'}
           </p>
         </div>
 
@@ -140,12 +224,10 @@ export const ProgramasAsignaturaPlan: React.FC = () => {
       <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 font-medium">
         <span className="inline-flex items-center gap-1.5 text-gray-700">
           <span className="w-2 h-2 rounded-full bg-gray-500" />
-          Borrador
+          {cargando ? 'Cargando' : 'Edición de plan'}
         </span>
         <span>·</span>
-        <span>Versión 2027–2031</span>
-        <span>·</span>
-        <span>Edición por asignación</span>
+        <span>Ciclo y orden se asignan dentro de este plan</span>
         <span>·</span>
         <span>{user.nombre} · Tu sesión</span>
       </div>
@@ -155,16 +237,9 @@ export const ProgramasAsignaturaPlan: React.FC = () => {
           <div>
             <h3 className="text-base font-bold text-gray-900">Programas de cada asignatura</h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              Selecciona las asignaturas que formarán parte del plan.
+              Selecciona las asignaturas de {planActual?.nombreCarrera || 'la carrera'} y asigna su ciclo y orden.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setMostrarTodasFacultad(!mostrarTodasFacultad)}
-            className="text-xs text-[#050758] font-bold hover:underline cursor-pointer"
-          >
-            {mostrarTodasFacultad ? 'Ver solo plan anterior' : '+ Ver toda la facultad'}
-          </button>
         </div>
 
         <form onSubmit={handleAgregarMateria} className="space-y-4">
@@ -176,39 +251,75 @@ export const ProgramasAsignaturaPlan: React.FC = () => {
             <input
               type="text"
               value={filtroTexto}
-              onChange={handleCambioFiltro}
+              onChange={(e) => setFiltroTexto(e.target.value)}
               placeholder="Escribe acá para buscar por nombre o código..."
               className="w-full text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:border-[#050758] placeholder:text-gray-400"
             />
 
-            <div className="flex flex-col sm:flex-row gap-3 items-center">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
               <select
                 value={materiaSeleccionada}
                 onChange={(e) => setMateriaSeleccionada(e.target.value)}
-                className="w-full text-xs bg-white border border-gray-200 rounded-xl p-3 focus:outline-none focus:border-[#050758] text-gray-800"
+                disabled={cargando || !planActual}
+                className="w-full sm:col-span-2 text-xs bg-white border border-gray-200 rounded-xl p-3 focus:outline-none focus:border-[#050758] text-gray-800"
               >
                 <option value="">Selecciona una asignatura de la lista...</option>
                 {materiasDisponibles.map((mat) => {
-                  const valorOpcion = `${mat.codigo} · ${mat.nombre}`;
                   return (
-                    <option key={mat.codigo} value={valorOpcion}>
-                      {valorOpcion} ({mat.origen})
+                    <option key={mat.idAsignatura} value={String(mat.idAsignatura)}>
+                      {mat.codigoAsignatura} · {mat.nombreAsignatura}
                     </option>
                   );
                 })}
               </select>
 
+              <label className="block text-[10px] font-bold text-gray-500">
+                Ciclo
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={numeroCiclo}
+                  onChange={(e) => setNumeroCiclo(e.target.value)}
+                  className="mt-1 w-full text-xs bg-white border border-gray-200 rounded-xl p-3 focus:outline-none focus:border-[#050758] text-gray-800"
+                />
+              </label>
+
+              <label className="block text-[10px] font-bold text-gray-500">
+                Número de orden
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={numeroOrden}
+                  onChange={(e) => setNumeroOrden(e.target.value)}
+                  className="mt-1 w-full text-xs bg-white border border-gray-200 rounded-xl p-3 focus:outline-none focus:border-[#050758] text-gray-800"
+                />
+              </label>
+
               <button
                 type="submit"
-                disabled={!materiaSeleccionada}
-                className="inline-flex items-center justify-center gap-2 bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-5 py-3 rounded-xl shadow-xs transition cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+                disabled={!materiaSeleccionada || guardando}
+                className="sm:col-span-4 inline-flex items-center justify-center gap-2 bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-5 py-3 rounded-xl shadow-xs transition cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
               >
                 <Plus className="w-4 h-4" />
-                Agregar al plan
+                {guardando ? 'Guardando...' : 'Agregar al plan'}
               </button>
             </div>
           </div>
         </form>
+
+        {cargando && <p className="text-xs text-gray-500">Cargando las asignaturas del plan...</p>}
+        {errorCarga && (
+          <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
+            <p className="text-xs font-bold">{errorCarga}</p>
+          </div>
+        )}
+        {errorOperacion && (
+          <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
+            <p className="text-xs font-bold">{errorOperacion}</p>
+          </div>
+        )}
 
         {/* Tabla de Asignaturas Vinculadas */}
         <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white">
@@ -217,6 +328,7 @@ export const ProgramasAsignaturaPlan: React.FC = () => {
               <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
                 <th className="p-3.5">Asignatura</th>
                 <th className="p-3.5">Ciclo</th>
+                <th className="p-3.5">Orden</th>
                 <th className="p-3.5">UV</th>
                 <th className="p-3.5">Programa</th>
                 <th className="p-3.5 text-right">Acción</th>
@@ -225,26 +337,69 @@ export const ProgramasAsignaturaPlan: React.FC = () => {
             <tbody className="divide-y divide-gray-100 text-xs text-gray-800">
               {materiasVinculadas.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-gray-400">
-                    No hay asignaturas agregadas en este plan.
+                  <td colSpan={6} className="p-6 text-center text-gray-400">
+                    {cargando ? 'Cargando asignaturas...' : 'No hay asignaturas agregadas en este plan.'}
                   </td>
                 </tr>
               ) : (
                 materiasVinculadas.map((mat) => (
                   <tr key={mat.id} className="hover:bg-gray-50/50 transition">
                     <td className="p-3.5 font-semibold text-[#050758]">{mat.codigo} · {mat.nombre}</td>
-                    <td className="p-3.5 text-gray-600">{mat.ciclo}</td>
+                    <td className="p-3.5 text-gray-600">
+                      <input
+                        type="number"
+                        min="1"
+                        value={posicionesEditadas[mat.id]?.numeroCiclo ?? String(mat.numeroCiclo)}
+                        onChange={(e) => setPosicionesEditadas((actual) => ({
+                          ...actual,
+                          [mat.id]: {
+                            numeroCiclo: e.target.value,
+                            numeroOrden: actual[mat.id]?.numeroOrden ?? String(mat.numeroOrden),
+                          },
+                        }))}
+                        className="w-16 text-xs bg-white border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#050758]"
+                        aria-label={`Ciclo de ${mat.nombre}`}
+                      />
+                    </td>
+                    <td className="p-3.5 text-gray-600">
+                      <input
+                        type="number"
+                        min="1"
+                        value={posicionesEditadas[mat.id]?.numeroOrden ?? String(mat.numeroOrden)}
+                        onChange={(e) => setPosicionesEditadas((actual) => ({
+                          ...actual,
+                          [mat.id]: {
+                            numeroCiclo: actual[mat.id]?.numeroCiclo ?? String(mat.numeroCiclo),
+                            numeroOrden: e.target.value,
+                          },
+                        }))}
+                        className="w-16 text-xs bg-white border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#050758]"
+                        aria-label={`Orden de ${mat.nombre}`}
+                      />
+                    </td>
                     <td className="p-3.5 text-gray-600">{mat.uv}</td>
                     <td className="p-3.5 text-gray-500">{mat.seccionesCompletas}</td>
                     <td className="p-3.5 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleQuitarMateria(mat.codigo)}
-                        className="text-gray-400 hover:text-red-600 transition p-1.5 rounded-lg cursor-pointer inline-flex items-center justify-center"
-                        title="Quitar asignatura"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="inline-flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={() => void guardarPosicion(mat)}
+                          disabled={guardando}
+                          className="text-[#050758] hover:text-[#090c7a] transition p-1.5 rounded-lg cursor-pointer inline-flex items-center justify-center disabled:opacity-50"
+                          title="Guardar ciclo y orden"
+                        >
+                          <Save className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleQuitarMateria(mat.id)}
+                          disabled={guardando}
+                          className="text-gray-400 hover:text-red-600 transition p-1.5 rounded-lg cursor-pointer inline-flex items-center justify-center disabled:opacity-50"
+                          title="Quitar asignatura"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -254,16 +409,16 @@ export const ProgramasAsignaturaPlan: React.FC = () => {
         </div>
 
         <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-gray-400">
+          <div className="text-xs text-gray-400">
             {guardadoExitoso ? (
               <span className="inline-flex items-center gap-1.5 text-[#2D5A1E] font-bold bg-[#8CB83C]/20 px-3 py-1.5 rounded-lg transition-all">
                 <CheckCircle2 className="w-4 h-4 text-[#4C8C23]" />
                 ¡Guardado con éxito!
               </span>
             ) : (
-              'Cambios sin guardar · visibles en esta versión de trabajo'
+              guardando ? 'Guardando cambios...' : 'Asigna el ciclo y el orden de cada asignatura en este plan.'
             )}
-          </p>
+          </div>
 
           {/* Grupo inferior izquierdo simétrico y botón Guardar a la derecha */}
           <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
@@ -289,10 +444,11 @@ export const ProgramasAsignaturaPlan: React.FC = () => {
             <button
               type="submit"
               onClick={handleGuardar}
-              className="inline-flex items-center gap-2 bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl shadow-sm transition cursor-pointer"
+              disabled={guardando || cargando || Boolean(errorCarga)}
+              className="inline-flex items-center gap-2 bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl shadow-sm transition cursor-pointer disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              Guardar
+              {guardando ? 'Guardando...' : 'Guardar'}
             </button>
           </div>
         </div>

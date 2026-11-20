@@ -6,7 +6,7 @@ interface AuthContextType {
   user: UserSession | null;
   setSession: (userData: UserSession) => void;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,7 +32,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await usuariosApi.cerrarSesion();
     localStorage.removeItem('unicaes_curricular_user');
     setUser(null);
   };

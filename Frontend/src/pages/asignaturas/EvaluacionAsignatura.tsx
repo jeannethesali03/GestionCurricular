@@ -1,16 +1,26 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Save } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ModalAlertaSalida } from '../../components/modals/ModalAlertaSalida';
+import { asignaturasApi } from '../../services/asignaturasApi';
+import { useAsignaturaDetalle } from '../../hooks/useAsignaturaDetalle';
 
 export const EvaluacionAsignatura: React.FC = () => {
   const { asignaturaId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { detalle, cargando, error: errorCarga } = useAsignaturaDetalle();
 
   const [evaluacion, setEvaluacion] = useState('');
   const [guardadoExitoso, setGuardadoExitoso] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Hydrate the editor from the persisted evaluation.
+    if (detalle) setEvaluacion(detalle.asignatura.evaluacion ?? '');
+  }, [detalle]);
 
   // Estados para el modal de confirmación de salida
   const [modalSalidaAbierto, setModalSalidaAbierto] = useState(false);
@@ -23,11 +33,29 @@ export const EvaluacionAsignatura: React.FC = () => {
     setModalSalidaAbierto(true);
   };
 
-  const handleGuardar = (e: React.FormEvent) => {
+  const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault();
-    setGuardadoExitoso(true);
-    setTimeout(() => setGuardadoExitoso(false), 4000);
+    if (!detalle || !user) return;
+    setErrorGuardado('');
+    setGuardando(true);
+    try {
+      await asignaturasApi.actualizarEvaluacion(Number(asignaturaId), evaluacion);
+      setGuardadoExitoso(true);
+      setTimeout(() => setGuardadoExitoso(false), 4000);
+    } catch (error) {
+      setErrorGuardado(error instanceof Error ? error.message : 'No se pudo guardar la evaluación.');
+    } finally {
+      setGuardando(false);
+    }
   };
+
+  if (cargando) return <p className="text-xs text-gray-500">Cargando evaluación...</p>;
+  if (errorCarga || !detalle) return (
+    <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
+      <p className="text-xs font-bold">{errorCarga || 'No se encontró la asignatura.'}</p>
+    </div>
+  );
+  if (detalle.estado === 'inactivo') return <p className="text-xs font-semibold text-gray-600">La asignatura está desactivada y no se puede editar.</p>;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-12 relative">
@@ -38,7 +66,7 @@ export const EvaluacionAsignatura: React.FC = () => {
             Evaluación
           </h2>
           <p className="text-xs text-gray-500 mt-1 font-medium">
-            Programación I · PRG101 · Ingeniería en Sistemas · Ingeniería y Tecnología
+            {detalle.asignatura.nombreAsignatura} · {detalle.asignatura.codigoAsignatura} · {detalle.asignatura.nombreCarrera || ''} · {detalle.asignatura.nombreFacultad || ''}
           </p>
         </div>
 
@@ -56,15 +84,20 @@ export const EvaluacionAsignatura: React.FC = () => {
       <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 font-medium">
         <span className="inline-flex items-center gap-1.5 text-gray-700">
           <span className="w-2 h-2 rounded-full bg-emerald-600" />
-          Asignada
+          Activa
         </span>
         <span>·</span>
-        <span>ISI-2027</span>
+        <span>{detalle.planes[0] ? `${detalle.planes[0].cicloInicio} - ${detalle.planes[0].cicloFin}` : 'Sin plan vinculado'}</span>
         <span>·</span>
         <span>Edición de programa académico</span>
         <span>·</span>
         <span>{user.nombre} · Tu sesión</span>
       </div>
+      {errorGuardado && (
+        <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
+          <p className="text-xs font-bold">{errorGuardado}</p>
+        </div>
+      )}
 
       {/* Contenedor Principal */}
       <div className="bg-white rounded-2xl border border-gray-200/80 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.02)] space-y-6">
@@ -101,7 +134,7 @@ export const EvaluacionAsignatura: React.FC = () => {
                   ¡Cambios guardados con éxito!
                 </span>
               ) : (
-                'Cambios sin guardar · visibles en esta versión de trabajo'
+                guardando ? 'Guardando...' : 'Cambios sin guardar · visibles en esta versión de trabajo'
               )}
             </p>
 
@@ -116,6 +149,7 @@ export const EvaluacionAsignatura: React.FC = () => {
 
               <button
                 type="submit"
+                disabled={guardando}
                 className="inline-flex items-center gap-2 bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl shadow-sm transition cursor-pointer"
               >
                 <Save className="w-4 h-4" />

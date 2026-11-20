@@ -36,6 +36,7 @@ public class GestionCurricularDbContext : DbContext
     public DbSet<PerfilEgreso> PerfilesEgreso => Set<PerfilEgreso>();
     public DbSet<ReferenciaBibliograficaPlan> ReferenciasBibliograficasPlan => Set<ReferenciaBibliograficaPlan>();
     public DbSet<Asignatura> Asignaturas => Set<Asignatura>();
+    public DbSet<PlanAsignatura> PlanesAsignaturas => Set<PlanAsignatura>();
     public DbSet<AsignaturaCarrera> AsignaturasCarrera => Set<AsignaturaCarrera>();
     public DbSet<UsuarioParticipanteAsignatura> UsuariosParticipantesAsignatura => Set<UsuarioParticipanteAsignatura>();
     public DbSet<UnidadDidactica> UnidadesDidacticas => Set<UnidadDidactica>();
@@ -66,8 +67,8 @@ public class GestionCurricularDbContext : DbContext
             .IsUnique();
         modelBuilder.Entity<RestauracionJerarquia>()
             .HasIndex(entity => new { entity.TipoRaiz, entity.IdRaiz });
-        modelBuilder.Entity<Asignatura>()
-            .HasIndex(entity => entity.NumeroOrden)
+        modelBuilder.Entity<PlanAsignatura>()
+            .HasIndex(entity => new { entity.IdPlan, entity.IdAsignatura })
             .IsUnique();
 
         modelBuilder.Entity<PrerrequisitoAsignatura>()
@@ -173,6 +174,16 @@ public class GestionCurricularDbContext : DbContext
             .HasOne(entity => entity.Carrera)
             .WithMany(entity => entity.PlanesEstudio)
             .HasForeignKey(entity => entity.IdCarrera)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PlanAsignatura>()
+            .HasOne(entity => entity.PlanEstudio)
+            .WithMany(entity => entity.Asignaturas)
+            .HasForeignKey(entity => entity.IdPlan)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PlanAsignatura>()
+            .HasOne(entity => entity.Asignatura)
+            .WithMany(entity => entity.PlanesAsignatura)
+            .HasForeignKey(entity => entity.IdAsignatura)
             .OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<UsuarioParticipantePlan>()
             .HasOne(entity => entity.PlanEstudio)

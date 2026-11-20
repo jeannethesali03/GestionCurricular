@@ -16,7 +16,12 @@ public class UnitTest1
         using var context = new GestionCurricularDbContext(options);
         var model = context.Model;
 
-        Assert.Equal(37, model.GetEntityTypes().Count());
+        Assert.Equal(38, model.GetEntityTypes().Count());
+        Assert.NotNull(model.FindEntityType(typeof(PlanAsignatura)));
+        Assert.Null(model.FindEntityType(typeof(Asignatura))!
+            .FindProperty("NumeroOrden"));
+        Assert.Null(model.FindEntityType(typeof(Asignatura))!
+            .FindProperty("CicloAcademico"));
 
         var prerequisite = model.FindEntityType(typeof(PrerrequisitoAsignatura));
         Assert.NotNull(prerequisite);

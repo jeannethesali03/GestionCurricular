@@ -40,14 +40,12 @@ CREATE TABLE Asignaturas (
     nombre_asignatura VARCHAR(100) NOT NULL,
     codigo_asignatura VARCHAR(30) NOT NULL UNIQUE,
     area_formacion VARCHAR(30) NOT NULL,
-    numero_orden INT UNIQUE,
     horas_ciclo INT NOT NULL,
     horas_semana INT NOT NULL,
     horas_practicas INT NOT NULL,
     duracion_ciclo_semana INT NOT NULL,
     duracion_hora_clase INT NOT NULL,
     unidades_valorativas INT NOT NULL,
-    ciclo_academico VARCHAR(10) NOT NULL,
     modalidad ENUM('presencial','semipresencial','nopresencial') NOT NULL,
     descripcion_asignatura MEDIUMTEXT,
     estrategia_metodologica MEDIUMTEXT,
@@ -110,6 +108,20 @@ CREATE TABLE Planes_estudio (
     orientacion_metodologica MEDIUMTEXT,
     PRIMARY KEY (id_plan),
     FOREIGN KEY (id_carrera) REFERENCES Carreras(id_carrera)
+) ENGINE=InnoDB;
+
+CREATE TABLE Plan_Asignaturas (
+    id_plan_asignaturas INT AUTO_INCREMENT NOT NULL,
+    id_plan INT NOT NULL,
+    id_asignatura INT NOT NULL,
+    numero_ciclo INT NOT NULL,
+    numero_orden INT NOT NULL,
+    CONSTRAINT pk_plan_asignaturas PRIMARY KEY (id_plan_asignaturas),
+    CONSTRAINT uq_plan_asignatura UNIQUE (id_plan, id_asignatura),
+    CONSTRAINT fk_plan_asignaturas_plan FOREIGN KEY (id_plan)
+        REFERENCES Planes_estudio(id_plan),
+    CONSTRAINT fk_plan_asignaturas_asignatura FOREIGN KEY (id_asignatura)
+        REFERENCES Asignaturas(id_asignatura)
 ) ENGINE=InnoDB;
 
 

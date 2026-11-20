@@ -87,8 +87,7 @@ public sealed class UsuariosService(
             .Select(relacion => new AsignaturaUsuarioResponse(
                 relacion.Asignatura.IdAsignatura,
                 relacion.Asignatura.CodigoAsignatura,
-                relacion.Asignatura.NombreAsignatura,
-                relacion.Asignatura.CicloAcademico))
+                relacion.Asignatura.NombreAsignatura))
             .ToArray();
         var cambios = usuario.RegistrosCambios
             .OrderByDescending(registro => registro.FechaHora)

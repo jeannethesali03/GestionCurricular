@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, CheckCircle2, Save, Info, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { universidadApi } from '../../services/universidadApi';
-import { usuariosApi } from '../../services/usuariosApi';
+import { asignacionesApi } from '../../services/asignacionesApi';
 
 export interface DocenteItem {
   id: string;
@@ -39,6 +38,8 @@ export const CrearAsignacion: React.FC = () => {
   const [facultadSeleccionadaGlobal, setFacultadSeleccionadaGlobal] = useState<string>('Todas');
   const [facultadesListado, setFacultadesListado] = useState<string[]>([]);
   const [docentesDisponibles, setDocentesDisponibles] = useState<DocenteItem[]>([]);
+  const [planesDisponibles, setPlanesDisponibles] = useState<PlanItem[]>([]);
+  const [asignaturasDisponibles, setAsignaturasDisponibles] = useState<AsignaturaItem[]>([]);
   const [errorFacultades, setErrorFacultades] = useState('');
 
   useEffect(() => {
@@ -47,33 +48,38 @@ export const CrearAsignacion: React.FC = () => {
     }
 
     let vigente = true;
-    Promise.all([universidadApi.listarFacultades(), usuariosApi.listar()])
-      .then(([facultades, usuarios]) => {
+    asignacionesApi.obtenerOpciones()
+      .then((opciones) => {
         if (vigente) {
-          const nombres = facultades.map((facultad) => facultad.nombreFacultad);
+          setErrorFacultades('');
+          const nombres = opciones.facultades.map((facultad) => facultad.nombreFacultad);
           setFacultadesListado(nombres);
           setFacultadSeleccionadaGlobal((actual) =>
             actual === 'Todas' || nombres.includes(actual) ? actual : 'Todas',
           );
-          setDocentesDisponibles(usuarios
-            .filter((usuario) =>
-              ['USUARIO', 'USUARIO_ESTANDAR', 'USUARIO ESTANDAR', 'USUARIO ESTÁNDAR'].includes(
-                (usuario.nombreRol ?? '').toUpperCase(),
-              )
-              && usuario.nombreFacultad !== null
-              && nombres.includes(usuario.nombreFacultad),
-            )
-            .map((usuario) => {
-              const partesNombre = usuario.nombreCompleto.trim().split(/\s+/);
-              const nombre = partesNombre.shift() ?? '';
-              return {
-                id: String(usuario.idUsuario),
-                nombre,
-                apellido: partesNombre.join(' '),
-                email: usuario.correo,
-                facultad: usuario.nombreFacultad ?? '',
-              };
-            }));
+          setDocentesDisponibles(opciones.usuarios.map((usuario) => {
+            const partesNombre = usuario.nombreCompleto.trim().split(/\s+/);
+            const nombre = partesNombre.shift() ?? '';
+            return {
+              id: String(usuario.idUsuario),
+              nombre,
+              apellido: partesNombre.join(' '),
+              email: usuario.correo,
+              facultad: usuario.nombreFacultad,
+            };
+          }));
+          setPlanesDisponibles(opciones.planes.map((plan) => ({
+            id: String(plan.idPlan),
+            codigo: `${plan.cicloInicio}-${plan.cicloFin}`,
+            nombre: plan.nombreCarrera,
+            facultad: plan.nombreFacultad,
+          })));
+          setAsignaturasDisponibles(opciones.asignaturas.map((asignatura) => ({
+            id: String(asignatura.idAsignatura),
+            codigo: asignatura.codigoAsignatura,
+            nombre: asignatura.nombreAsignatura,
+            facultad: asignatura.nombreFacultad,
+          })));
         }
       })
       .catch((error: unknown) => {
@@ -90,30 +96,18 @@ export const CrearAsignacion: React.FC = () => {
   const [docentesSeleccionados, setDocentesSeleccionados] = useState<DocenteItem[]>([]);
 
   // 2. PLANES DE ESTUDIO
-  const [planesDisponibles] = useState<PlanItem[]>([
-    { id: '1', codigo: 'ISI-2027', nombre: 'Ingeniería en Sistemas', facultad: 'Ingeniería y Tecnología' },
-    { id: '2', codigo: 'IND-2027', nombre: 'Ingeniería Industrial', facultad: 'Ingeniería y Tecnología' },
-    { id: '3', codigo: 'LAE-2025', nombre: 'Administración de Empresas', facultad: 'Ciencias Económicas' },
-    { id: '4', codigo: 'DER-2025', nombre: 'Ciencias Jurídicas', facultad: 'Jurisprudencia y Ciencias Sociales' },
-  ]);
-
   const [busquedaPlan, setBusquedaPlan] = useState('');
   const [planSeleccionTemporal, setPlanSeleccionTemporal] = useState('');
   const [planesSeleccionados, setPlanesSeleccionados] = useState<PlanItem[]>([]);
 
   // 3. ASIGNATURAS
-  const [asignaturasDisponibles] = useState<AsignaturaItem[]>([
-    { id: 'a1', codigo: 'PRG101', nombre: 'Programación I', facultad: 'Ingeniería y Tecnología' },
-    { id: 'a2', codigo: 'ALG101', nombre: 'Álgebra Lineal', facultad: 'Ingeniería y Tecnología' },
-    { id: 'a3', codigo: 'CGA101', nombre: 'Contabilidad General', facultad: 'Ciencias Económicas' },
-    { id: 'a4', codigo: 'DER101', nombre: 'Introducción al Derecho', facultad: 'Jurisprudencia y Ciencias Sociales' },
-  ]);
-
   const [busquedaAsignatura, setBusquedaAsignatura] = useState('');
   const [asignaturaSeleccionTemporal, setAsignaturaSeleccionTemporal] = useState('');
   const [asignaturasSeleccionadas, setAsignaturasSeleccionadas] = useState<AsignaturaItem[]>([]);
 
   const [guardadoExitoso, setGuardadoExitoso] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState('');
 
   const facultadUsuario = user?.facultadNombre || 'Ingeniería y Tecnología';
 
@@ -204,12 +198,30 @@ export const CrearAsignacion: React.FC = () => {
     setAsignaturasSeleccionadas(asignaturasSeleccionadas.filter(a => a.id !== id));
   };
 
-  const handleGuardar = (e: React.FormEvent) => {
+  const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault();
-    setGuardadoExitoso(true);
-    setTimeout(() => {
-      setGuardadoExitoso(false);
-    }, 4000);
+    setErrorGuardado('');
+    setGuardadoExitoso(false);
+    if (docentesSeleccionados.length === 0
+      || (planesSeleccionados.length === 0 && asignaturasSeleccionadas.length === 0)) {
+      setErrorGuardado('Selecciona al menos un usuario y un plan o una asignatura.');
+      return;
+    }
+
+    setGuardando(true);
+    try {
+      await asignacionesApi.crear({
+        idsUsuarios: docentesSeleccionados.map((docente) => Number(docente.id)),
+        idsPlanes: planesSeleccionados.map((plan) => Number(plan.id)),
+        idsAsignaturas: asignaturasSeleccionadas.map((asignatura) => Number(asignatura.id)),
+      });
+      setGuardadoExitoso(true);
+      setTimeout(() => setGuardadoExitoso(false), 4000);
+    } catch (error) {
+      setErrorGuardado(error instanceof Error ? error.message : 'No se pudieron guardar las asignaciones.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const botonDocenteHabilitado = docenteSeleccionTemporal !== '';
@@ -283,12 +295,11 @@ export const CrearAsignacion: React.FC = () => {
                 </option>
               ))}
             </select>
-            {errorFacultades && (
-              <p role="alert" className="mt-1 text-xs text-red-600">{errorFacultades}</p>
-            )}
           </div>
         )}
       </div>
+
+      {errorFacultades && <p role="alert" className="text-xs font-semibold text-red-600">{errorFacultades}</p>}
 
       <form onSubmit={handleGuardar} className="space-y-6">
         
@@ -598,6 +609,7 @@ export const CrearAsignacion: React.FC = () => {
               <p className="text-xs font-bold">¡Asignaciones guardadas con éxito! Puedes seguir editando o salir cuando desees.</p>
             </div>
           )}
+          {errorGuardado && <p role="alert" className="text-xs font-semibold text-red-600">{errorGuardado}</p>}
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
             <button
@@ -610,10 +622,11 @@ export const CrearAsignacion: React.FC = () => {
 
             <button
               type="submit"
+              disabled={guardando}
               className="inline-flex items-center gap-2 bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl shadow-sm transition cursor-pointer"
             >
               <Save className="w-4 h-4" />
-              Guardar asignaciones
+              {guardando ? 'Guardando...' : 'Guardar asignaciones'}
             </button>
           </div>
 

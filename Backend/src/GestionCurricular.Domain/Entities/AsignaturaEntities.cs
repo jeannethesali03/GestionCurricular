@@ -35,9 +35,6 @@ public class Asignatura
     [Column("area_formacion")]
     public string AreaFormacion { get; set; } = null!;
 
-    [Column("numero_orden")]
-    public int? NumeroOrden { get; set; }
-
     [Column("horas_ciclo")]
     public int HorasCiclo { get; set; }
 
@@ -55,10 +52,6 @@ public class Asignatura
 
     [Column("unidades_valorativas")]
     public int UnidadesValorativas { get; set; }
-
-    [Required, MaxLength(10)]
-    [Column("ciclo_academico")]
-    public string CicloAcademico { get; set; } = null!;
 
     [Column("modalidad", TypeName = "enum('presencial','semipresencial','nopresencial')")]
     public ModalidadAsignatura Modalidad { get; set; }
@@ -85,10 +78,34 @@ public class Asignatura
     public ICollection<PrerrequisitoNoAsignatura> PrerrequisitosNoAsignatura { get; set; } = [];
     public ICollection<PrerrequisitoAsignatura> ComoAsignatura { get; set; } = [];
     public ICollection<PrerrequisitoAsignatura> ComoPrerrequisito { get; set; } = [];
+    public ICollection<PlanAsignatura> PlanesAsignatura { get; set; } = [];
     public ICollection<PlanAbsorcion> PlanesAbsorcion { get; set; } = [];
     public ICollection<PlanAbsorcion> PlanesAbsorcionEquivalentes { get; set; } = [];
     public ICollection<MatrizCambio> MatricesCambios { get; set; } = [];
     public ICollection<MatrizCongruenciaAsignatura> MatricesCongruencia { get; set; } = [];
+}
+
+[Table("Plan_Asignaturas")]
+public class PlanAsignatura
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    [Column("id_plan_asignaturas")]
+    public int IdPlanAsignaturas { get; set; }
+
+    [Column("id_plan")]
+    public int IdPlan { get; set; }
+
+    [Column("id_asignatura")]
+    public int IdAsignatura { get; set; }
+
+    [Column("numero_ciclo")]
+    public int NumeroCiclo { get; set; }
+
+    [Column("numero_orden")]
+    public int NumeroOrden { get; set; }
+
+    public PlanEstudio PlanEstudio { get; set; } = null!;
+    public Asignatura Asignatura { get; set; } = null!;
 }
 
 [Table("Asignatura_carrera")]

@@ -1,14 +1,18 @@
 using GestionCurricular.Api.Contracts;
 using GestionCurricular.Domain.Entities;
 using GestionCurricular.Infrastructure.Persistence;
+using GestionCurricular.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace GestionCurricular.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/asignaturas")]
-public sealed class AsignaturasController(GestionCurricularDbContext db) : ControllerBase
+public sealed partial class AsignaturasController(GestionCurricularDbContext db) : ControllerBase
 {
     [HttpGet("{id:int}/detalles")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -18,10 +22,15 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         [FromQuery] bool incluirInactivos = false,
         CancellationToken cancellationToken = default)
     {
+        var usuario = await ObtenerUsuarioActualAsync(cancellationToken);
+        if (usuario is null) return Unauthorized();
+        if (!await PuedeVerAsync(usuario, id, cancellationToken)) return Forbid();
+
         var asignatura = await db.Asignaturas
             .AsNoTracking()
             .AsSplitQuery()
             .Include(entity => entity.Carreras).ThenInclude(relacion => relacion.Carrera)
+                .ThenInclude(carrera => carrera.Facultad).ThenInclude(facultad => facultad.Sede)
             .Include(entity => entity.UsuariosParticipantes).ThenInclude(relacion => relacion.Usuario)
             .Include(entity => entity.UnidadesDidacticas).ThenInclude(unidad => unidad.Contenidos)
             .Include(entity => entity.Objetivos)
@@ -35,6 +44,8 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
             .Include(entity => entity.PlanesAbsorcionEquivalentes).ThenInclude(relacion => relacion.PlanEstudio)
             .Include(entity => entity.MatricesCambios)
             .Include(entity => entity.MatricesCongruencia)
+            .Include(entity => entity.Carreras).ThenInclude(relacion => relacion.Carrera)
+                .ThenInclude(carrera => carrera.Facultad).ThenInclude(facultad => facultad.Sede)
             .FirstOrDefaultAsync(entity => entity.IdAsignatura == id, cancellationToken);
 
         if (asignatura is null)
@@ -44,7 +55,9 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
 
         return Ok(new
         {
-            asignatura = ConvertirRespuesta(asignatura),
+            asignatura = await ConvertirRespuestaAsync(asignatura, usuario.IdUsuario, cancellationToken),
+            estado = asignatura.EstadoAsignatura == EstadoAsignatura.Activo ? "activo" : "inactivo",
+            planes = await ObtenerPlanesAsync(id, cancellationToken),
             carreras = asignatura.Carreras
                 .Select(relacion => new
                 {
@@ -63,6 +76,7 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
                     estado = "activo"
                 }),
             unidadesDidacticas = asignatura.UnidadesDidacticas
+                .OrderBy(unidad => unidad.IdUnidadDidactica)
                 .Select(unidad => new
                 {
                     unidad.IdUnidadDidactica,
@@ -70,6 +84,7 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
                     unidad.Objetivo,
                     estado = "activo",
                     contenidos = unidad.Contenidos
+                        .OrderBy(contenido => contenido.IdContenido)
                         .Select(contenido => new
                         {
                             contenido.IdContenido,
@@ -79,6 +94,7 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
                         })
                 }),
             objetivos = asignatura.Objetivos
+                .OrderBy(item => item.IdObjetivoAsignatura)
                 .Select(item => new
                 {
                     item.IdObjetivoAsignatura,
@@ -96,13 +112,16 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
                     estado = "activo"
                 }),
             referenciasBibliograficas = asignatura.ReferenciasBibliograficas
+                .OrderBy(item => item.IdReferenciaBibliograficaAsignatura)
                 .Select(item => new
                 {
                     item.IdReferenciaBibliograficaAsignatura,
                     item.Referencia,
                     estado = "activo"
                 }),
-            fuentesElectronicas = asignatura.FuentesElectronicas.Select(item => new
+            fuentesElectronicas = asignatura.FuentesElectronicas
+                .OrderBy(item => item.IdFuenteElectronicaAsignatura)
+                .Select(item => new
             {
                 item.IdFuenteElectronicaAsignatura,
                 item.Referencia
@@ -123,6 +142,7 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
                 .Select(item => new
                 {
                     item.IdPrerrequisitoAsignatura,
+                    idPrerrequisito = item.IdPrerrequisitoAsignatura,
                     item.Prerrequisito.NombreAsignatura,
                     estado = "activo"
                 }),
@@ -171,6 +191,9 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         [FromQuery] bool incluirInactivas = false,
         CancellationToken cancellationToken = default)
     {
+        var usuario = await ObtenerUsuarioActualAsync(cancellationToken);
+        if (usuario is null) return Unauthorized();
+
         var query = db.Asignaturas.AsNoTracking().AsQueryable();
         if (!incluirInactivas)
         {
@@ -183,12 +206,34 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
                         && relacion.Carrera.Facultad.Sede.EstadoRegistro == EstadoRegistro.Activo)));
         }
 
+        query = AplicarAlcance(query, usuario);
         var asignaturas = await query
+            .AsSplitQuery()
             .Include(asignatura => asignatura.FuentesElectronicas)
+            .Include(asignatura => asignatura.Carreras).ThenInclude(relacion => relacion.Carrera)
+                .ThenInclude(carrera => carrera.Facultad).ThenInclude(facultad => facultad.Sede)
+            .Include(asignatura => asignatura.UsuariosParticipantes).ThenInclude(relacion => relacion.Usuario)
+            .Include(asignatura => asignatura.Objetivos)
+            .Include(asignatura => asignatura.UnidadesDidacticas)
+            .Include(asignatura => asignatura.ReferenciasBibliograficas)
             .OrderBy(asignatura => asignatura.IdAsignatura)
             .ToListAsync(cancellationToken);
 
-        return Ok(asignaturas.Select(ConvertirRespuesta).ToList());
+        var idsDirectos = new HashSet<int>();
+        var idsPorPlan = new HashSet<int>();
+        if (EsUsuarioEstandar(usuario))
+        {
+            idsDirectos = await db.UsuariosParticipantesAsignatura.AsNoTracking()
+                .Where(relacion => relacion.IdUsuario == usuario.IdUsuario)
+                .Select(relacion => relacion.IdAsignatura)
+                .ToHashSetAsync(cancellationToken);
+            idsPorPlan = await ObtenerIdsAsignadosPorPlanAsync(usuario.IdUsuario, cancellationToken);
+        }
+
+        return Ok(asignaturas.Select(asignatura =>
+            ConvertirRespuesta(asignatura,
+                idsPorPlan.Contains(asignatura.IdAsignatura),
+                idsDirectos.Contains(asignatura.IdAsignatura))).ToList());
     }
 
     [HttpGet("{id:int}")]
@@ -198,14 +243,24 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         int id,
         CancellationToken cancellationToken)
     {
+        var usuario = await ObtenerUsuarioActualAsync(cancellationToken);
+        if (usuario is null) return Unauthorized();
+        if (!await PuedeVerAsync(usuario, id, cancellationToken)) return Forbid();
+
         var asignatura = await db.Asignaturas
             .AsNoTracking()
             .Include(entity => entity.FuentesElectronicas)
+            .Include(entity => entity.Carreras).ThenInclude(relacion => relacion.Carrera)
+                .ThenInclude(carrera => carrera.Facultad).ThenInclude(facultad => facultad.Sede)
+            .Include(entity => entity.UsuariosParticipantes).ThenInclude(relacion => relacion.Usuario)
+            .Include(entity => entity.Objetivos)
+            .Include(entity => entity.UnidadesDidacticas)
+            .Include(entity => entity.ReferenciasBibliograficas)
             .FirstOrDefaultAsync(entity => entity.IdAsignatura == id, cancellationToken);
 
         return asignatura is null
             ? NotFound()
-            : Ok(ConvertirRespuesta(asignatura));
+            : Ok(await ConvertirRespuestaAsync(asignatura, usuario.IdUsuario, cancellationToken));
     }
 
     [HttpPost]
@@ -216,18 +271,65 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         AsignaturaRequest request,
         CancellationToken cancellationToken)
     {
+        var usuario = await ObtenerUsuarioActualAsync(cancellationToken);
+        if (usuario is null) return Unauthorized();
+        if (!EsSuperUsuario(usuario) && !EsAdministrador(usuario)) return Forbid();
+        if (!request.IdCarrera.HasValue
+            || !await CarreraPermitidaAsync(usuario, request.IdCarrera.Value, cancellationToken))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "La carrera indicada no existe, está inactiva o no pertenece a su facultad.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+        if (!AreaFormacionValida(request.AreaFormacion))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "El área de formación debe ser Humanísticas, Básicas o Técnica.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+        if (request.IdPrerrequisitoAsignatura.HasValue
+            && !string.IsNullOrWhiteSpace(request.PrerrequisitoNoAsignatura))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Selecciona un prerrequisito de asignatura o uno no asignatura, no ambos.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+        var esSuperUsuario = EsSuperUsuario(usuario);
+        if (request.IdPrerrequisitoAsignatura.HasValue
+            && !await db.Asignaturas.AnyAsync(item =>
+                item.IdAsignatura == request.IdPrerrequisitoAsignatura
+                && item.EstadoAsignatura == EstadoAsignatura.Activo
+                && item.Carreras.Any(relacion =>
+                    esSuperUsuario
+                    || relacion.Carrera.IdFacultad == usuario.IdFacultad),
+                cancellationToken))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "El prerrequisito seleccionado no existe o no está activo.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
         var validacion = ValidarModalidad(request.Modalidad);
         if (validacion is not null)
         {
             return validacion;
         }
 
-        var ordenEnUso = await ValidarOrdenAsync(request.NumeroOrden, null, cancellationToken);
-        if (ordenEnUso)
+        if (await db.Asignaturas.AnyAsync(
+                item => item.CodigoAsignatura == request.CodigoAsignatura.Trim(),
+                cancellationToken))
         {
             return Conflict(new ProblemDetails
             {
-                Title = "El número de orden ya está asignado a otra asignatura.",
+                Title = "El código ya está asignado a otra asignatura.",
                 Status = StatusCodes.Status409Conflict
             });
         }
@@ -239,13 +341,37 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         AplicarCambios(asignatura, request);
         ReemplazarFuentesElectronicas(asignatura, request.FuentesElectronicas);
 
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         db.Asignaturas.Add(asignatura);
         await db.SaveChangesAsync(cancellationToken);
+        db.AsignaturasCarrera.Add(new AsignaturaCarrera
+        {
+            IdCarrera = request.IdCarrera.Value,
+            IdAsignatura = asignatura.IdAsignatura
+        });
+        if (request.IdPrerrequisitoAsignatura.HasValue)
+        {
+            db.PrerrequisitosAsignatura.Add(new PrerrequisitoAsignatura
+            {
+                IdAsignatura = asignatura.IdAsignatura,
+                IdPrerrequisitoAsignatura = request.IdPrerrequisitoAsignatura.Value
+            });
+        }
+        if (!string.IsNullOrWhiteSpace(request.PrerrequisitoNoAsignatura))
+        {
+            db.PrerrequisitosNoAsignatura.Add(new PrerrequisitoNoAsignatura
+            {
+                IdAsignatura = asignatura.IdAsignatura,
+                Nombre = request.PrerrequisitoNoAsignatura.Trim()
+            });
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return CreatedAtAction(
             nameof(ObtenerPorId),
             new { id = asignatura.IdAsignatura },
-            ConvertirRespuesta(asignatura));
+            await ObtenerRespuestaAsync(asignatura.IdAsignatura, usuario.IdUsuario, cancellationToken));
     }
 
     [HttpPut("{id:int}")]
@@ -266,12 +392,50 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
             return NotFound();
         }
 
+        var usuario = await ObtenerUsuarioActualAsync(cancellationToken);
+        if (usuario is null) return Unauthorized();
+        if (!await PuedeEditarAsync(usuario, id, cancellationToken)) return Forbid();
+
         if (asignatura.EstadoAsignatura == EstadoAsignatura.Inactivo)
         {
             return Conflict(new ProblemDetails
             {
                 Title = "No se puede editar una asignatura desactivada. Actívela primero.",
                 Status = StatusCodes.Status409Conflict
+            });
+        }
+        if (!AreaFormacionValida(request.AreaFormacion))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "El área de formación debe ser Humanísticas, Básicas o Técnica.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+        if (request.IdPrerrequisitoAsignatura.HasValue
+            && !string.IsNullOrWhiteSpace(request.PrerrequisitoNoAsignatura))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Selecciona un prerrequisito de asignatura o uno no asignatura, no ambos.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+        var esSuperUsuario = EsSuperUsuario(usuario);
+        if (request.IdPrerrequisitoAsignatura.HasValue
+            && !await db.Asignaturas.AnyAsync(item =>
+                item.IdAsignatura == request.IdPrerrequisitoAsignatura
+                && item.IdAsignatura != id
+                && item.EstadoAsignatura == EstadoAsignatura.Activo
+                && item.Carreras.Any(relacion =>
+                    esSuperUsuario
+                    || relacion.Carrera.IdFacultad == usuario.IdFacultad),
+                cancellationToken))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "El prerrequisito seleccionado no existe o no es válido para su facultad.",
+                Status = StatusCodes.Status400BadRequest
             });
         }
 
@@ -281,11 +445,14 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
             return validacion;
         }
 
-        if (await ValidarOrdenAsync(request.NumeroOrden, id, cancellationToken))
+        if (await db.Asignaturas.AnyAsync(
+                item => item.IdAsignatura != id
+                    && item.CodigoAsignatura == request.CodigoAsignatura.Trim(),
+                cancellationToken))
         {
             return Conflict(new ProblemDetails
             {
-                Title = "El número de orden ya está asignado a otra asignatura.",
+                Title = "El código ya está asignado a otra asignatura.",
                 Status = StatusCodes.Status409Conflict
             });
         }
@@ -294,80 +461,60 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         ReemplazarFuentesElectronicas(asignatura, request.FuentesElectronicas);
         await db.SaveChangesAsync(cancellationToken);
 
-        return Ok(ConvertirRespuesta(asignatura));
+        return Ok(await ObtenerRespuestaAsync(id, usuario.IdUsuario, cancellationToken));
     }
 
     [HttpDelete("{id:int}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Desactivar(
         int id,
+        ConfirmarDesactivacionAsignaturaRequest request,
+        [FromServices] IDesactivacionesUniversidadService desactivaciones,
         CancellationToken cancellationToken)
     {
-        var asignatura = await db.Asignaturas
-            .FirstOrDefaultAsync(entity => entity.IdAsignatura == id, cancellationToken);
-        if (asignatura is null)
-        {
-            return NotFound();
-        }
-
-        asignatura.EstadoAsignatura = EstadoAsignatura.Inactivo;
-        await db.SaveChangesAsync(cancellationToken);
-
+        await desactivaciones.DesactivarAsync(
+            "asignatura", id, ObtenerIdUsuarioActual(), request.Codigo, cancellationToken);
         return NoContent();
+    }
+
+    [HttpPost("{id:int}/codigo-desactivacion")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> SolicitarCodigoDesactivacion(
+        int id,
+        [FromServices] IDesactivacionesUniversidadService desactivaciones,
+        CancellationToken cancellationToken)
+    {
+        await desactivaciones.SolicitarCodigoAsync(
+            "asignatura", id, ObtenerIdUsuarioActual(), cancellationToken);
+        return Accepted();
     }
 
     [HttpPut("{id:int}/activar")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Activar(
         int id,
+        [FromServices] IDesactivacionesUniversidadService desactivaciones,
         CancellationToken cancellationToken)
     {
-        var asignatura = await db.Asignaturas
-            .FirstOrDefaultAsync(entity => entity.IdAsignatura == id, cancellationToken);
-        if (asignatura is null)
-        {
-            return NotFound();
-        }
-
-        var tieneCarreras = await db.AsignaturasCarrera
-            .AnyAsync(relacion => relacion.IdAsignatura == id, cancellationToken);
-        if (tieneCarreras
-            && !await db.AsignaturasCarrera.AnyAsync(
-                relacion => relacion.IdAsignatura == id
-                    && relacion.Carrera.EstadoRegistro == EstadoRegistro.Activo
-                    && relacion.Carrera.Facultad.EstadoRegistro == EstadoRegistro.Activo
-                    && relacion.Carrera.Facultad.Sede.EstadoRegistro == EstadoRegistro.Activo,
-                cancellationToken))
-        {
-            return Conflict(new ProblemDetails
-            {
-                Title = "No se puede activar una asignatura hasta que al menos una carrera relacionada esté activa.",
-                Status = StatusCodes.Status409Conflict
-            });
-        }
-
-        asignatura.EstadoAsignatura = EstadoAsignatura.Activo;
-        await db.SaveChangesAsync(cancellationToken);
-
+        await desactivaciones.ActivarAsync("asignatura", id, ObtenerIdUsuarioActual(), cancellationToken);
         return NoContent();
     }
 
-    private async Task<bool> ValidarOrdenAsync(
-        int? numeroOrden,
-        int? idExcluir,
-        CancellationToken cancellationToken)
-    {
-        if (!numeroOrden.HasValue)
-        {
-            return false;
-        }
+    private int ObtenerIdUsuarioActual() =>
+        int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var idUsuario)
+            ? idUsuario
+            : throw new UnauthorizedAccessException("La sesión autenticada no tiene un usuario válido.");
 
-        return await db.Asignaturas.AnyAsync(
-            asignatura => asignatura.NumeroOrden == numeroOrden
-                && (!idExcluir.HasValue || asignatura.IdAsignatura != idExcluir.Value),
-            cancellationToken);
+    private async Task<Usuario?> ObtenerUsuarioActualAsync(CancellationToken cancellationToken)
+    {
+        var idUsuario = ObtenerIdUsuarioActual();
+        return await db.Usuarios.AsNoTracking()
+            .Include(usuario => usuario.Rol)
+            .FirstOrDefaultAsync(usuario =>
+                usuario.IdUsuario == idUsuario
+                && usuario.EstadoCuenta == EstadoCuenta.Activo,
+                cancellationToken);
     }
 
     private BadRequestObjectResult? ValidarModalidad(string modalidad)
@@ -384,19 +531,20 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         });
     }
 
+    private static bool AreaFormacionValida(string areaFormacion) =>
+        areaFormacion is "Humanísticas" or "Básicas" or "Técnica";
+
     private static void AplicarCambios(Asignatura asignatura, AsignaturaRequest request)
     {
         asignatura.NombreAsignatura = request.NombreAsignatura.Trim();
         asignatura.CodigoAsignatura = request.CodigoAsignatura.Trim();
         asignatura.AreaFormacion = request.AreaFormacion.Trim();
-        asignatura.NumeroOrden = request.NumeroOrden;
         asignatura.HorasCiclo = request.HorasCiclo;
         asignatura.HorasSemana = request.HorasSemana;
         asignatura.HorasPracticas = request.HorasPracticas;
         asignatura.DuracionCicloSemana = request.DuracionCicloSemana;
         asignatura.DuracionHoraClase = request.DuracionHoraClase;
         asignatura.UnidadesValorativas = request.UnidadesValorativas;
-        asignatura.CicloAcademico = request.CicloAcademico.Trim();
         asignatura.Modalidad = request.Modalidad switch
         {
             "presencial" => ModalidadAsignatura.Presencial,
@@ -424,20 +572,33 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
         }
     }
 
-    private static AsignaturaResponse ConvertirRespuesta(Asignatura asignatura) =>
-        new(
+    private static AsignaturaResponse ConvertirRespuesta(
+        Asignatura asignatura,
+        bool asignadaPorPlan = false,
+        bool asignadaDirectamente = false)
+    {
+        var carrera = asignatura.Carreras.FirstOrDefault()?.Carrera;
+        var seccionesCompletas = 1
+            + (string.IsNullOrWhiteSpace(asignatura.DescripcionAsignatura) ? 0 : 1)
+            + (asignatura.Objetivos.Any(item => item.TipoObjetivo == TipoObjetivo.General)
+                && asignatura.Objetivos.Any(item => item.TipoObjetivo == TipoObjetivo.Especifico) ? 1 : 0)
+            + (asignatura.UnidadesDidacticas.Count > 0 ? 1 : 0)
+            + (string.IsNullOrWhiteSpace(asignatura.EstrategiaMetodologica) ? 0 : 1)
+            + (string.IsNullOrWhiteSpace(asignatura.Evaluacion) ? 0 : 1)
+            + (asignatura.ReferenciasBibliograficas.Count > 0
+                && asignatura.FuentesElectronicas.Count > 0 ? 1 : 0);
+
+        return new(
             asignatura.IdAsignatura,
             asignatura.NombreAsignatura,
             asignatura.CodigoAsignatura,
             asignatura.AreaFormacion,
-            asignatura.NumeroOrden,
             asignatura.HorasCiclo,
             asignatura.HorasSemana,
             asignatura.HorasPracticas,
             asignatura.DuracionCicloSemana,
             asignatura.DuracionHoraClase,
             asignatura.UnidadesValorativas,
-            asignatura.CicloAcademico,
             asignatura.Modalidad switch
             {
                 ModalidadAsignatura.Presencial => "presencial",
@@ -450,5 +611,17 @@ public sealed class AsignaturasController(GestionCurricularDbContext db) : Contr
             asignatura.DescripcionAsignatura,
             asignatura.EstrategiaMetodologica,
             asignatura.Evaluacion,
-            asignatura.FuentesElectronicas.FirstOrDefault()?.Referencia);
+            asignatura.FuentesElectronicas.FirstOrDefault()?.Referencia,
+            carrera?.IdCarrera,
+            carrera?.NombreCarrera,
+            carrera?.Facultad.IdFacultad,
+            carrera?.Facultad.NombreFacultad,
+            carrera?.Facultad.Sede.IdSede,
+            carrera?.Facultad.Sede.NombreSede,
+            asignatura.UsuariosParticipantes.FirstOrDefault()?.Usuario.NombreCompleto,
+            seccionesCompletas,
+            7,
+            asignadaPorPlan,
+            asignadaDirectamente);
+    }
 }

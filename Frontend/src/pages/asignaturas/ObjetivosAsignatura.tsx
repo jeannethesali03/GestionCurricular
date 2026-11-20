@@ -1,18 +1,33 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Info, Plus, Save, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ModalAlertaSalida } from '../../components/modals/ModalAlertaSalida';
+import { asignaturasApi } from '../../services/asignaturasApi';
+import { useAsignaturaDetalle } from '../../hooks/useAsignaturaDetalle';
 
 export const ObjetivosAsignatura: React.FC = () => {
   const { asignaturaId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { detalle, cargando, error: errorCarga } = useAsignaturaDetalle();
 
   const [pestanaActiva, setPestanaActiva] = useState<'general' | 'especificos'>('especificos');
   const [objetivoGeneral, setObjetivoGeneral] = useState('');
   const [especificos, setEspecificos] = useState<string[]>(['']);
   const [guardadoExitoso, setGuardadoExitoso] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    if (!detalle) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize the objective editor from saved rows.
+    setObjetivoGeneral(detalle.objetivos.find((item) => item.tipo === 'general')?.descripcionObjetivo ?? '');
+    const objetivos = detalle.objetivos
+      .filter((item) => item.tipo === 'especifico')
+      .map((item) => item.descripcionObjetivo);
+    setEspecificos(objetivos.length > 0 ? objetivos : ['']);
+  }, [detalle]);
 
   // Estados para el modal de confirmación de salida
   const [modalSalidaAbierto, setModalSalidaAbierto] = useState(false);
@@ -30,6 +45,7 @@ export const ObjetivosAsignatura: React.FC = () => {
   };
 
   const handleEliminarEspecifico = (indexParaEliminar: number) => {
+    if (especificos.length <= 1) return;
     const actualizados = especificos.filter((_, index) => index !== indexParaEliminar);
     setEspecificos(actualizados);
   };
@@ -40,11 +56,36 @@ export const ObjetivosAsignatura: React.FC = () => {
     setEspecificos(nuevos);
   };
 
-  const handleGuardar = (e: React.FormEvent) => {
-    e.preventDefault();
-    setGuardadoExitoso(true);
-    setTimeout(() => setGuardadoExitoso(false), 4000);
+  const handleGuardar = async () => {
+    if (!detalle || !user) return;
+    const objetivosLimpios = especificos.map((item) => item.trim()).filter(Boolean);
+    if (!objetivoGeneral.trim() || objetivosLimpios.length === 0) {
+      setErrorGuardado('Registra el objetivo general y al menos un objetivo específico.');
+      return;
+    }
+
+    setErrorGuardado('');
+    setGuardando(true);
+    try {
+      await asignaturasApi.actualizarObjetivos(
+        Number(asignaturaId), objetivoGeneral, objetivosLimpios,
+      );
+      setGuardadoExitoso(true);
+      setTimeout(() => setGuardadoExitoso(false), 4000);
+    } catch (error) {
+      setErrorGuardado(error instanceof Error ? error.message : 'No se pudieron guardar los objetivos.');
+    } finally {
+      setGuardando(false);
+    }
   };
+
+  if (cargando) return <p className="text-xs text-gray-500">Cargando objetivos...</p>;
+  if (errorCarga || !detalle) return (
+    <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
+      <p className="text-xs font-bold">{errorCarga || 'No se encontró la asignatura.'}</p>
+    </div>
+  );
+  if (detalle.estado === 'inactivo') return <p className="text-xs font-semibold text-gray-600">La asignatura está desactivada y no se puede editar.</p>;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-12 relative">
@@ -55,7 +96,7 @@ export const ObjetivosAsignatura: React.FC = () => {
             Objetivos de la asignatura
           </h2>
           <p className="text-xs text-gray-500 mt-1 font-medium">
-            Programación I · PRG101 · Ingeniería y Tecnología
+            {detalle.asignatura.nombreAsignatura} · {detalle.asignatura.codigoAsignatura} · {detalle.asignatura.nombreFacultad || ''}
           </p>
         </div>
 
@@ -73,10 +114,10 @@ export const ObjetivosAsignatura: React.FC = () => {
       <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 font-medium">
         <span className="inline-flex items-center gap-1.5 text-gray-700">
           <span className="w-2 h-2 rounded-full bg-gray-400" />
-          Borrador
+          {detalle.estado === 'activo' ? 'Activa' : 'Desactivada'}
         </span>
         <span>·</span>
-        <span>Versión 2027-2031</span>
+        <span>{detalle.planes[0] ? `${detalle.planes[0].cicloInicio} - ${detalle.planes[0].cicloFin}` : 'Sin plan vinculado'}</span>
         <span>·</span>
         <span className="text-[#050758] font-bold">Edición por asignación</span>
         <span>·</span>
@@ -168,8 +209,9 @@ export const ObjetivosAsignatura: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleEliminarEspecifico(index)}
+                          disabled={especificos.length <= 1}
                           title="Eliminar objetivo"
-                          className="text-gray-300 hover:text-red-600 transition p-1 cursor-pointer"
+                          className="text-gray-300 hover:text-red-600 transition p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -200,10 +242,16 @@ export const ObjetivosAsignatura: React.FC = () => {
             </div>
           )}
 
+          {errorGuardado && (
+            <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
+              <p className="text-xs font-bold">{errorGuardado}</p>
+            </div>
+          )}
+
           {/* Pie del Formulario: Estado, Botón Salir y Botón Guardar */}
           <div className="pt-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-xs text-gray-400">
-              Cambios sin guardar · visibles en esta versión de trabajo
+              {guardando ? 'Guardando...' : guardadoExitoso ? 'Cambios guardados con éxito' : 'Cambios sin guardar · visibles en esta versión de trabajo'}
             </p>
 
             <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
@@ -218,6 +266,7 @@ export const ObjetivosAsignatura: React.FC = () => {
               <button
                 type="button"
                 onClick={handleGuardar}
+                disabled={guardando}
                 className="inline-flex items-center gap-2 bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl shadow-sm transition cursor-pointer justify-center"
               >
                 <Save className="w-4 h-4" />
