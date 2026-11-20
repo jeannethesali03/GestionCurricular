@@ -481,7 +481,8 @@ public sealed class UsuariosService(
             usuario.IdFacultad,
             usuario.Facultad?.NombreFacultad,
             usuario.GradoAcademico,
-            usuario.ExperienciaEducacionSuperior);
+            usuario.ExperienciaEducacionSuperior,
+            string.Empty);
     }
 
     private async Task<string> CrearTokenAsync(

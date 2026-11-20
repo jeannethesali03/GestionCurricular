@@ -15,7 +15,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserSession | null>(leerSesionGuardada);
 
   const setSession = (userData: UserSession) => {
-    localStorage.setItem('unicaes_curricular_user', JSON.stringify(userData));
+    sessionStorage.setItem('unicaes_curricular_user', JSON.stringify(userData));
     setUser(userData);
   };
 
@@ -27,6 +27,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const userData = await usuariosApi.iniciarSesion(email, password);
     setSession({
       ...userData,
+      sessionToken: userData.sessionToken,
       facultadId: userData.facultadId ?? undefined,
       facultadNombre: userData.facultadNombre ?? undefined,
     });
@@ -34,7 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     await usuariosApi.cerrarSesion();
-    localStorage.removeItem('unicaes_curricular_user');
+    sessionStorage.removeItem('unicaes_curricular_user');
     setUser(null);
   };
 
@@ -47,20 +48,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 function leerSesionGuardada(): UserSession | null {
   const key = 'unicaes_curricular_user';
-  const saved = localStorage.getItem(key);
+  const saved = sessionStorage.getItem(key);
+  localStorage.removeItem(key);
   if (!saved) return null;
 
   try {
     const parsed = JSON.parse(saved) as UserSession;
-    if (/^\d+$/.test(parsed.id) && ['SUPER_USUARIO', 'ADMINISTRADOR', 'USUARIO'].includes(parsed.rol)) {
+    if (/^\d+$/.test(parsed.id)
+      && typeof parsed.sessionToken === 'string'
+      && parsed.sessionToken.length > 0
+      && ['SUPER_USUARIO', 'ADMINISTRADOR', 'USUARIO'].includes(parsed.rol)) {
       return parsed;
     }
   } catch {
-    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
     return null;
   }
 
-  localStorage.removeItem(key);
+  sessionStorage.removeItem(key);
   return null;
 }
 

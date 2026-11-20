@@ -2,6 +2,7 @@ export type UserRole = 'SUPER_USUARIO' | 'ADMINISTRADOR' | 'USUARIO';
 
 export interface UserSession {
   id: string;
+  sessionToken: string;
   nombre: string;
   email: string;
   rol: UserRole;

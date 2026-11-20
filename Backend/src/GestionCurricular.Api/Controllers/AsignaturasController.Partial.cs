@@ -3,18 +3,97 @@ using GestionCurricular.Domain.Entities;
 using GestionCurricular.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace GestionCurricular.Api.Controllers;
 
 public sealed partial class AsignaturasController
 {
+    [HttpGet("{id:int}/bloqueos")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ObtenerBloqueos(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        var error = await ValidarEdicionAsync(id, cancellationToken);
+        if (error is not null) return error;
+
+        var propietarioActual = ObtenerPropietarioBloqueo();
+        if (string.IsNullOrWhiteSpace(propietarioActual)) return Unauthorized();
+
+        string[] vistas =
+        [
+            "generalidades", "descripcion", "objetivos", "unidades",
+            "estrategia", "evaluacion", "referencias"
+        ];
+        return Ok(locks.ObtenerBloqueosDeOtros(id, propietarioActual, vistas));
+    }
+
+    [HttpPost("{id:int}/bloqueos/{vista}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> AdquirirBloqueo(
+        int id,
+        string vista,
+        CancellationToken cancellationToken)
+    {
+        if (!EsVistaAsignaturaValida(vista)) return BadRequest();
+
+        var error = await ValidarEdicionAsync(id, cancellationToken);
+        if (error is not null) return error;
+
+        var usuarioId = ObtenerPropietarioBloqueo();
+        var nombreUsuario = User.FindFirst(ClaimTypes.Name)?.Value;
+        if (string.IsNullOrWhiteSpace(usuarioId) || string.IsNullOrWhiteSpace(nombreUsuario))
+            return Unauthorized();
+
+        var resultado = locks.Adquirir(id, vista, usuarioId, nombreUsuario);
+        if (!resultado.Adquirido)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = $"Esta vista está siendo editada por {resultado.NombreUsuario}.",
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+
+        return Ok(new { usuarioId, nombreUsuario });
+    }
+
+    [HttpPut("{id:int}/bloqueos/{vista}/renovar")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public IActionResult RenovarBloqueo(int id, string vista)
+    {
+        var usuarioId = ObtenerPropietarioBloqueo();
+        if (string.IsNullOrWhiteSpace(usuarioId))
+            return Unauthorized();
+        if (!locks.Renovar(id, vista, usuarioId))
+            return Conflict(new ProblemDetails
+            {
+                Title = "El bloqueo de esta vista ya no está vigente.",
+                Status = StatusCodes.Status409Conflict
+            });
+        return NoContent();
+    }
+
+    [HttpDelete("{id:int}/bloqueos/{vista}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public IActionResult LiberarBloqueo(int id, string vista)
+    {
+        var usuarioId = ObtenerPropietarioBloqueo();
+        if (!string.IsNullOrWhiteSpace(usuarioId))
+            locks.Liberar(id, vista, usuarioId);
+        return NoContent();
+    }
+
     [HttpPut("{id:int}/generalidades")]
     public async Task<IActionResult> ActualizarGeneralidades(
         int id,
         ActualizarGeneralidadesAsignaturaRequest request,
         CancellationToken cancellationToken)
     {
-        var error = await ValidarEdicionAsync(id, cancellationToken);
+        var error = await ValidarEdicionAsync(id, cancellationToken, "generalidades");
         if (error is not null) return error;
         var usuario = await ObtenerUsuarioActualAsync(cancellationToken);
         if (usuario is null) return Unauthorized();
@@ -147,7 +226,7 @@ public sealed partial class AsignaturasController
         ObjetivosAsignaturaRequest request,
         CancellationToken cancellationToken)
     {
-        var error = await ValidarEdicionAsync(id, cancellationToken);
+        var error = await ValidarEdicionAsync(id, cancellationToken, "objetivos");
         if (error is not null) return error;
         if (string.IsNullOrWhiteSpace(request.ObjetivoGeneral)
             || request.ObjetivosEspecificos.Count == 0
@@ -190,7 +269,7 @@ public sealed partial class AsignaturasController
         UnidadesAsignaturaRequest request,
         CancellationToken cancellationToken)
     {
-        var error = await ValidarEdicionAsync(id, cancellationToken);
+        var error = await ValidarEdicionAsync(id, cancellationToken, "unidades");
         if (error is not null) return error;
         if (request.Unidades.Count == 0
             || request.Unidades.Any(unidad =>
@@ -242,7 +321,7 @@ public sealed partial class AsignaturasController
         ReferenciasAsignaturaRequest request,
         CancellationToken cancellationToken)
     {
-        var error = await ValidarEdicionAsync(id, cancellationToken);
+        var error = await ValidarEdicionAsync(id, cancellationToken, "referencias");
         if (error is not null) return error;
         if (request.ReferenciasBibliograficas.Count == 0
             || request.FuentesElectronicas.Count == 0
@@ -285,11 +364,21 @@ public sealed partial class AsignaturasController
 
     private async Task<IActionResult?> ValidarEdicionAsync(
         int id,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? vista = null)
     {
         var usuario = await ObtenerUsuarioActualAsync(cancellationToken);
         if (usuario is null) return Unauthorized();
         if (!await PuedeEditarAsync(usuario, id, cancellationToken)) return Forbid();
+        if (vista is not null
+            && !locks.PerteneceA(id, vista, ObtenerPropietarioBloqueo() ?? usuario.IdUsuario.ToString()))
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "Debes adquirir el bloqueo de esta vista antes de guardar.",
+                Status = StatusCodes.Status409Conflict
+            });
+        }
 
         var activa = await db.Asignaturas.AnyAsync(item =>
             item.IdAsignatura == id && item.EstadoAsignatura == EstadoAsignatura.Activo,
@@ -312,7 +401,7 @@ public sealed partial class AsignaturasController
         string campo,
         CancellationToken cancellationToken)
     {
-        var error = await ValidarEdicionAsync(id, cancellationToken);
+        var error = await ValidarEdicionAsync(id, cancellationToken, campo);
         if (error is not null) return error;
 
         var asignatura = await db.Asignaturas
@@ -335,6 +424,18 @@ public sealed partial class AsignaturasController
         await db.SaveChangesAsync(cancellationToken);
         return new NoContentResult();
     }
+
+    private static bool EsVistaAsignaturaValida(string vista) =>
+        vista switch
+        {
+            "generalidades" or "descripcion" or "objetivos" or "unidades"
+                or "estrategia" or "evaluacion" or "referencias" => true,
+            _ => false
+        };
+
+    private string? ObtenerPropietarioBloqueo() =>
+        User.FindFirst(ClaimTypes.Sid)?.Value
+        ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
     private static bool EsSuperUsuario(Usuario usuario) =>
         string.Equals(usuario.Rol.NombreRol, "SUPER_USUARIO", StringComparison.OrdinalIgnoreCase);

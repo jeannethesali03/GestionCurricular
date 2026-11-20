@@ -191,4 +191,5 @@ public sealed record SesionUsuarioResponse(
     int? FacultadId,
     string? FacultadNombre,
     string GradoAcademico,
-    int ExperienciaEducacionSuperior);
+    int ExperienciaEducacionSuperior,
+    string SessionToken);

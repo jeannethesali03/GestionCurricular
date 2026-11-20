@@ -12,7 +12,9 @@ namespace GestionCurricular.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/asignaturas")]
-public sealed partial class AsignaturasController(GestionCurricularDbContext db) : ControllerBase
+public sealed partial class AsignaturasController(
+    GestionCurricularDbContext db,
+    AsignaturaEdicionLockService locks) : ControllerBase
 {
     [HttpGet("{id:int}/detalles")]
     [ProducesResponseType(StatusCodes.Status200OK)]

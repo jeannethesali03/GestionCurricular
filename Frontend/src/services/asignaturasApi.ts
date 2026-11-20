@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, authHeaders } from '../config/api';
 
 export interface AsignaturaApi {
   idAsignatura: number;
@@ -84,11 +84,17 @@ export interface AsignaturaInput {
   fuentesElectronicas: string | null;
 }
 
+export interface BloqueoAsignaturaResponse {
+  usuarioId: string;
+  nombreUsuario: string;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     credentials: 'include',
     headers: {
+      ...authHeaders(),
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
     },
@@ -110,6 +116,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const asignaturasApi = {
+  obtenerBloqueos: (id: number) =>
+    request<Record<string, string>>(`/api/asignaturas/${id}/bloqueos`),
+  adquirirBloqueo: (id: number, vista: string) =>
+    request<BloqueoAsignaturaResponse>(`/api/asignaturas/${id}/bloqueos/${vista}`, {
+      method: 'POST',
+    }),
+  renovarBloqueo: (id: number, vista: string) =>
+    request<void>(`/api/asignaturas/${id}/bloqueos/${vista}/renovar`, {
+      method: 'PUT',
+    }),
+  liberarBloqueo: (id: number, vista: string) =>
+    request<void>(`/api/asignaturas/${id}/bloqueos/${vista}`, {
+      method: 'DELETE',
+      keepalive: true,
+    }),
   listar: (incluirInactivas = false) =>
     request<AsignaturaApi[]>(`/api/asignaturas?incluirInactivas=${incluirInactivas}`),
   obtener: (id: number) =>
