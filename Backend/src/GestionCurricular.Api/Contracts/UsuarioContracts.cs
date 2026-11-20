@@ -88,8 +88,7 @@ public sealed record PlanUsuarioResponse(
 public sealed record AsignaturaUsuarioResponse(
     int IdAsignatura,
     string CodigoAsignatura,
-    string NombreAsignatura,
-    string CicloAcademico);
+    string NombreAsignatura);
 
 /// <summary>Registro de actividad realizado por un usuario.</summary>
 public sealed record CambioUsuarioResponse(

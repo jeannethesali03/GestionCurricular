@@ -172,6 +172,9 @@ public sealed class SmtpEmailSender(
         var encodedName = WebUtility.HtmlEncode(nombre);
         var encodedEntityType = WebUtility.HtmlEncode(tipoEntidad);
         var encodedEntityName = WebUtility.HtmlEncode(nombreEntidad);
+        var impacto = tipoEntidad == "asignatura"
+            ? "La asignatura solo se desactivará; sus datos se conservarán y podrá reactivarse."
+            : "La desactivación también afecta sus entidades dependientes.";
 
         using var message = new MailMessage
         {
@@ -181,7 +184,7 @@ public sealed class SmtpEmailSender(
                 <p>Hola {encodedName},</p>
                 <p>Se solicitó desactivar la {encodedEntityType} <strong>{encodedEntityName}</strong>.</p>
                 <p>El código de confirmación es <strong>{codigo}</strong>. Es de un solo uso, vence en 10 minutos y permite hasta cinco intentos.</p>
-                <p>La desactivación también afecta sus entidades dependientes. Si no reconoces esta solicitud, ignora este mensaje.</p>
+                <p>{WebUtility.HtmlEncode(impacto)} Si no reconoces esta solicitud, ignora este mensaje.</p>
                 """,
             IsBodyHtml = true
         };

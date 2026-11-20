@@ -40,9 +40,20 @@ export interface CarreraApi {
   }[];
 }
 
+export interface PlanEstudioApi {
+  idPlan: number;
+  idCarrera: number;
+  nombreCarrera: string | null;
+  modalidad: 'presencial' | 'semipresencial' | 'virtual';
+  cicloInicio: string;
+  cicloFin: string;
+  estadoPlan: string;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    credentials: 'include',
     headers: {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
@@ -93,6 +104,8 @@ export const universidadApi = {
   }) => request<void>(`/api/facultades/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   listarCarreras: (incluirInactivas = false) =>
     request<CarreraApi[]>(`/api/carreras?incluirInactivas=${incluirInactivas}`),
+  listarPlanes: (incluirDesactivados = false) =>
+    request<PlanEstudioApi[]>(`/api/planes-estudio?incluirDesactivados=${incluirDesactivados}`),
   crearCarrera: (data: { idFacultad: number; nombreCarrera: string }) =>
     request<CarreraApi>('/api/carreras', { method: 'POST', body: JSON.stringify(data) }),
   actualizarCarrera: (id: number, data: { idFacultad: number; nombreCarrera: string }) =>

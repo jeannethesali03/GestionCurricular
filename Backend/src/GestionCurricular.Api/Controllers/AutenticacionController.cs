@@ -1,5 +1,8 @@
 using GestionCurricular.Api.Contracts;
 using GestionCurricular.Api.Services;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GestionCurricular.Api.Controllers;
@@ -40,12 +43,36 @@ public sealed class AutenticacionController(IUsuariosService usuarios) : Control
         CancellationToken cancellationToken)
     {
         var sesion = await usuarios.IniciarSesionAsync(request, cancellationToken);
-        return sesion is null
-            ? Unauthorized(new ProblemDetails
+        if (sesion is null)
+        {
+            return Unauthorized(new ProblemDetails
             {
                 Title = "Correo o contraseña incorrectos, o la cuenta está inactiva.",
                 Status = StatusCodes.Status401Unauthorized
-            })
-            : Ok(sesion);
+            });
+        }
+
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, sesion.Id),
+            new Claim(ClaimTypes.Name, sesion.Nombre),
+            new Claim(ClaimTypes.Email, sesion.Email),
+            new Claim(ClaimTypes.Role, sesion.Rol)
+        };
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(identity),
+            new AuthenticationProperties { IsPersistent = true });
+
+        return Ok(sesion);
+    }
+
+    [HttpPost("logout")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> CerrarSesion()
+    {
+        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return NoContent();
     }
 }

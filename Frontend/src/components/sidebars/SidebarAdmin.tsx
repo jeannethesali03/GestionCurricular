@@ -26,9 +26,13 @@ export const SidebarAdmin: React.FC = () => {
     return null;
   }
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'No se pudo cerrar la sesión.');
+    }
   };
 
   return (

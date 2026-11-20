@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Save, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ModalAlertaSalida } from '../../components/modals/ModalAlertaSalida';
+import { asignaturasApi } from '../../services/asignaturasApi';
+import { useAsignaturaDetalle } from '../../hooks/useAsignaturaDetalle';
 
 export interface ItemReferencia {
   id: string;
@@ -13,6 +15,7 @@ export const ReferenciasAsignatura: React.FC = () => {
   const { asignaturaId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { detalle, cargando, error: errorCarga } = useAsignaturaDetalle();
 
   // Estado para bibliografías en formato APA (inician vacías para que la usuaria escriba)
   const [bibliografias, setBibliografias] = useState<ItemReferencia[]>([
@@ -31,6 +34,25 @@ export const ReferenciasAsignatura: React.FC = () => {
   ]);
 
   const [guardadoExitoso, setGuardadoExitoso] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    if (!detalle) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize the reference lists from saved rows.
+    setBibliografias(detalle.referenciasBibliograficas.length > 0
+      ? detalle.referenciasBibliograficas.map((item) => ({
+          id: String(item.idReferenciaBibliograficaAsignatura),
+          texto: item.referencia,
+        }))
+      : [{ id: '1', texto: '' }]);
+    setFuentesElectronicas(detalle.fuentesElectronicas.length > 0
+      ? detalle.fuentesElectronicas.map((item) => ({
+          id: String(item.idFuenteElectronicaAsignatura),
+          texto: item.referencia,
+        }))
+      : [{ id: 'e1', texto: '' }]);
+  }, [detalle]);
 
   // Estados para el modal de confirmación de salida
   const [modalSalidaAbierto, setModalSalidaAbierto] = useState(false);
@@ -49,6 +71,7 @@ export const ReferenciasAsignatura: React.FC = () => {
   };
 
   const handleEliminarBiblio = (id: string) => {
+    if (bibliografias.length <= 1) return;
     setBibliografias(bibliografias.filter((b) => b.id !== id));
   };
 
@@ -64,6 +87,7 @@ export const ReferenciasAsignatura: React.FC = () => {
   };
 
   const handleEliminarFuente = (id: string) => {
+    if (fuentesElectronicas.length <= 1) return;
     setFuentesElectronicas(fuentesElectronicas.filter((f) => f.id !== id));
   };
 
@@ -73,11 +97,38 @@ export const ReferenciasAsignatura: React.FC = () => {
     );
   };
 
-  const handleGuardar = (e: React.FormEvent) => {
+  const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault();
-    setGuardadoExitoso(true);
-    setTimeout(() => setGuardadoExitoso(false), 4000);
+    if (!detalle || !user) return;
+    const referencias = bibliografias.map((item) => item.texto.trim()).filter(Boolean);
+    const fuentes = fuentesElectronicas.map((item) => item.texto.trim()).filter(Boolean);
+    if (referencias.length === 0 || fuentes.length === 0) {
+      setErrorGuardado('Registra al menos una referencia bibliográfica y una fuente electrónica.');
+      return;
+    }
+
+    setErrorGuardado('');
+    setGuardando(true);
+    try {
+      await asignaturasApi.actualizarReferencias(
+        Number(asignaturaId), referencias, fuentes,
+      );
+      setGuardadoExitoso(true);
+      setTimeout(() => setGuardadoExitoso(false), 4000);
+    } catch (error) {
+      setErrorGuardado(error instanceof Error ? error.message : 'No se pudieron guardar las referencias.');
+    } finally {
+      setGuardando(false);
+    }
   };
+
+  if (cargando) return <p className="text-xs text-gray-500">Cargando referencias...</p>;
+  if (errorCarga || !detalle) return (
+    <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
+      <p className="text-xs font-bold">{errorCarga || 'No se encontró la asignatura.'}</p>
+    </div>
+  );
+  if (detalle.estado === 'inactivo') return <p className="text-xs font-semibold text-gray-600">La asignatura está desactivada y no se puede editar.</p>;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-12 relative">
@@ -88,7 +139,7 @@ export const ReferenciasAsignatura: React.FC = () => {
             Referencias y fuentes
           </h2>
           <p className="text-xs text-gray-500 mt-1 font-medium">
-            Programación I · PRG101 · Ingeniería en Sistemas · Ingeniería y Tecnología
+            {detalle.asignatura.nombreAsignatura} · {detalle.asignatura.codigoAsignatura} · {detalle.asignatura.nombreCarrera || ''} · {detalle.asignatura.nombreFacultad || ''}
           </p>
         </div>
 
@@ -106,10 +157,10 @@ export const ReferenciasAsignatura: React.FC = () => {
       <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 font-medium">
         <span className="inline-flex items-center gap-1.5 text-gray-700">
           <span className="w-2 h-2 rounded-full bg-emerald-600" />
-          Asignada
+          Activa
         </span>
         <span>·</span>
-        <span>ISI-2027</span>
+        <span>{detalle.planes[0] ? `${detalle.planes[0].cicloInicio} - ${detalle.planes[0].cicloFin}` : 'Sin plan vinculado'}</span>
         <span>·</span>
         <span>Edición de programa académico</span>
         <span>·</span>
@@ -146,7 +197,8 @@ export const ReferenciasAsignatura: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => handleEliminarBiblio(biblio.id)}
-                      className="text-gray-300 hover:text-red-600 transition p-1 cursor-pointer"
+                      disabled={bibliografias.length <= 1}
+                      className="text-gray-300 hover:text-red-600 transition p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                       title="Eliminar bibliografía"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -195,7 +247,8 @@ export const ReferenciasAsignatura: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => handleEliminarFuente(fuente.id)}
-                      className="text-gray-300 hover:text-red-600 transition p-1 cursor-pointer"
+                      disabled={fuentesElectronicas.length <= 1}
+                      className="text-gray-300 hover:text-red-600 transition p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                       title="Eliminar fuente electrónica"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -225,6 +278,12 @@ export const ReferenciasAsignatura: React.FC = () => {
             </div>
           </div>
 
+          {errorGuardado && (
+            <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
+              <p className="text-xs font-bold">{errorGuardado}</p>
+            </div>
+          )}
+
           {/* Pie de Formulario: Mensaje de éxito, Botón Salir y Botón Guardar */}
           <div className="pt-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-xs text-gray-400">
@@ -234,7 +293,7 @@ export const ReferenciasAsignatura: React.FC = () => {
                   ¡Referencias guardadas con éxito!
                 </span>
               ) : (
-                'Cambios sin guardar · visibles en esta versión de trabajo'
+                guardando ? 'Guardando...' : 'Cambios sin guardar · visibles en esta versión de trabajo'
               )}
             </p>
 
@@ -249,6 +308,7 @@ export const ReferenciasAsignatura: React.FC = () => {
 
               <button
                 type="submit"
+                disabled={guardando}
                 className="inline-flex items-center gap-2 bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl shadow-sm transition cursor-pointer justify-center"
               >
                 <Save className="w-4 h-4" />

@@ -33,7 +33,6 @@ export interface DetalleUsuario {
     idAsignatura: number;
     codigoAsignatura: string;
     nombreAsignatura: string;
-    cicloAcademico: string;
   }[];
   historialCambios: {
     idRegistroCambio: number;
@@ -60,6 +59,7 @@ export interface UsuarioUpdateInput extends UsuarioInput {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    credentials: 'include',
     headers: {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
@@ -145,4 +145,6 @@ export const usuariosApi = {
       method: 'POST',
       body: JSON.stringify({ correo, password }),
     }),
+  cerrarSesion: () =>
+    request<void>('/api/auth/logout', { method: 'POST' }),
 };

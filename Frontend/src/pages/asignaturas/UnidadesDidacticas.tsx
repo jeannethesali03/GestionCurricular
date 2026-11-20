@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Save, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ModalAlertaSalida } from '../../components/modals/ModalAlertaSalida';
+import { asignaturasApi } from '../../services/asignaturasApi';
+import { useAsignaturaDetalle } from '../../hooks/useAsignaturaDetalle';
 
 export interface ContenidoItem {
   id: string;
@@ -21,6 +23,7 @@ export const UnidadesDidacticas: React.FC = () => {
   const { asignaturaId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { detalle, cargando, error: errorCarga } = useAsignaturaDetalle();
 
   const [unidades, setUnidades] = useState<UnidadItem[]>([
     {
@@ -38,6 +41,30 @@ export const UnidadesDidacticas: React.FC = () => {
   ]);
 
   const [guardadoExitoso, setGuardadoExitoso] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    if (!detalle) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize the unit editor from saved rows.
+    setUnidades(detalle.unidadesDidacticas.length > 0
+      ? detalle.unidadesDidacticas.map((unidad) => ({
+          id: String(unidad.idUnidadDidactica),
+          titulo: unidad.nombre,
+          objetivo: unidad.objetivo,
+          contenidos: unidad.contenidos.map((contenido) => ({
+            id: String(contenido.idContenido),
+            texto: contenido.nombre,
+            descripcion: contenido.descripcion ?? '',
+          })),
+        }))
+      : [{
+          id: '1',
+          titulo: '',
+          objetivo: '',
+          contenidos: [{ id: 'c1', texto: '', descripcion: '' }],
+        }]);
+  }, [detalle]);
 
   // Estados para el modal de confirmación de salida
   const [modalSalidaAbierto, setModalSalidaAbierto] = useState(false);
@@ -68,6 +95,7 @@ export const UnidadesDidacticas: React.FC = () => {
   };
 
   const handleEliminarUnidad = (id: string) => {
+    if (unidades.length <= 1) return;
     setUnidades(unidades.filter((u) => u.id !== id));
   };
 
@@ -98,6 +126,7 @@ export const UnidadesDidacticas: React.FC = () => {
     setUnidades(
       unidades.map((u) => {
         if (u.id === unidadId) {
+          if (u.contenidos.length <= 1) return u;
           return {
             ...u,
             contenidos: u.contenidos.filter((c) => c.id !== contenidoId),
@@ -127,11 +156,55 @@ export const UnidadesDidacticas: React.FC = () => {
     );
   };
 
-  const handleGuardarPrincipal = (e: React.FormEvent) => {
+  const handleGuardarPrincipal = async (e: React.FormEvent) => {
     e.preventDefault();
-    setGuardadoExitoso(true);
-    setTimeout(() => setGuardadoExitoso(false), 4000);
+    if (!detalle || !user) return;
+    const unidadesLimpias = unidades.map((unidad) => ({
+      ...unidad,
+      titulo: unidad.titulo.trim(),
+      objetivo: unidad.objetivo.trim(),
+      contenidos: unidad.contenidos.map((contenido) => ({
+        ...contenido,
+        texto: contenido.texto.trim(),
+      })),
+    }));
+    if (unidadesLimpias.some((unidad) =>
+      !unidad.titulo || !unidad.objetivo || !unidad.contenidos.length
+      || unidad.contenidos.some((contenido) => !contenido.texto))) {
+      setErrorGuardado('Completa el título, objetivo y al menos un contenido en cada unidad.');
+      return;
+    }
+
+    setErrorGuardado('');
+    setGuardando(true);
+    try {
+      await asignaturasApi.actualizarUnidades(
+        Number(asignaturaId),
+        unidadesLimpias.map((unidad) => ({
+          nombre: unidad.titulo,
+          objetivo: unidad.objetivo,
+          contenidos: unidad.contenidos.map((contenido) => ({
+            nombre: contenido.texto,
+            descripcion: contenido.descripcion,
+          })),
+        })),
+      );
+      setGuardadoExitoso(true);
+      setTimeout(() => setGuardadoExitoso(false), 4000);
+    } catch (error) {
+      setErrorGuardado(error instanceof Error ? error.message : 'No se pudieron guardar las unidades.');
+    } finally {
+      setGuardando(false);
+    }
   };
+
+  if (cargando) return <p className="text-xs text-gray-500">Cargando unidades didácticas...</p>;
+  if (errorCarga || !detalle) return (
+    <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
+      <p className="text-xs font-bold">{errorCarga || 'No se encontró la asignatura.'}</p>
+    </div>
+  );
+  if (detalle.estado === 'inactivo') return <p className="text-xs font-semibold text-gray-600">La asignatura está desactivada y no se puede editar.</p>;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-12 relative">
@@ -142,7 +215,7 @@ export const UnidadesDidacticas: React.FC = () => {
             Unidades didácticas y contenido
           </h2>
           <p className="text-xs text-gray-500 mt-1 font-medium">
-            Programación I · PRG101 · Ingeniería en Sistemas · Ingeniería y Tecnología
+            {detalle.asignatura.nombreAsignatura} · {detalle.asignatura.codigoAsignatura} · {detalle.asignatura.nombreCarrera || ''} · {detalle.asignatura.nombreFacultad || ''}
           </p>
         </div>
 
@@ -160,10 +233,10 @@ export const UnidadesDidacticas: React.FC = () => {
       <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 font-medium">
         <span className="inline-flex items-center gap-1.5 text-gray-700">
           <span className="w-2 h-2 rounded-full bg-emerald-600" />
-          Asignada
+          Activa
         </span>
         <span>·</span>
-        <span>ISI-2027</span>
+        <span>{detalle.planes[0] ? `${detalle.planes[0].cicloInicio} - ${detalle.planes[0].cicloFin}` : 'Sin plan vinculado'}</span>
         <span>·</span>
         <span>Edición de programa académico</span>
         <span>·</span>
@@ -206,7 +279,8 @@ export const UnidadesDidacticas: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleEliminarUnidad(unidad.id)}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition cursor-pointer"
+                    disabled={unidades.length <= 1}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     Eliminar unidad
@@ -274,7 +348,8 @@ export const UnidadesDidacticas: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleEliminarContenido(unidad.id, cont.id)}
-                            className="text-gray-300 hover:text-red-600 transition p-1 cursor-pointer"
+                            disabled={unidad.contenidos.length <= 1}
+                            className="text-gray-300 hover:text-red-600 transition p-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                             title="Eliminar contenido"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -320,6 +395,12 @@ export const UnidadesDidacticas: React.FC = () => {
             ))}
           </div>
 
+          {errorGuardado && (
+            <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
+              <p className="text-xs font-bold">{errorGuardado}</p>
+            </div>
+          )}
+
           {/* Pie de Formulario: Guardado y Botones */}
           <div className="pt-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-xs text-gray-400">
@@ -329,7 +410,7 @@ export const UnidadesDidacticas: React.FC = () => {
                   ¡Unidades didácticas guardadas con éxito!
                 </span>
               ) : (
-                'Cambios sin guardar · visibles en esta versión de trabajo'
+                guardando ? 'Guardando...' : 'Cambios sin guardar · visibles en esta versión de trabajo'
               )}
             </p>
 
@@ -344,6 +425,7 @@ export const UnidadesDidacticas: React.FC = () => {
 
               <button
                 type="submit"
+                disabled={guardando}
                 className="inline-flex items-center gap-2 bg-[#050758] hover:bg-[#090c7a] text-white text-xs font-bold px-6 py-3 rounded-xl shadow-sm transition cursor-pointer justify-center"
               >
                 <Save className="w-4 h-4" />

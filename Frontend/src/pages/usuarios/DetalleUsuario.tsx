@@ -213,9 +213,6 @@ export const DetalleUsuario: React.FC = () => {
                         <span className="font-extrabold text-[#050758]">{asignatura.codigoAsignatura}</span>
                         <p className="font-medium text-gray-800 mt-0.5">{asignatura.nombreAsignatura}</p>
                       </div>
-                      <span className="px-2.5 py-1 bg-white border border-gray-200 rounded-lg text-gray-600 font-semibold">
-                        {asignatura.cicloAcademico}
-                      </span>
                     </div>
                   ))}
                 </div>

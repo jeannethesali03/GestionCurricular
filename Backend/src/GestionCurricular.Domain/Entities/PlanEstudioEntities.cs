@@ -117,6 +117,7 @@ public class PlanEstudio
     public ICollection<PlanAbsorcion> PlanesAbsorcion { get; set; } = [];
     public ICollection<MatrizCambio> MatricesCambios { get; set; } = [];
     public ICollection<MatrizCongruencia> MatricesCongruencia { get; set; } = [];
+    public ICollection<PlanAsignatura> Asignaturas { get; set; } = [];
 }
 
 [Table("Usuarios_participantes_plan")]
